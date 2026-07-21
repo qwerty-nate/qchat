@@ -1,4 +1,17 @@
-# qchat
-Quantum Text Messaging Python Applet.
+qchat
+A simulated qutrit-based (3-level quantum system) messaging architecture built in Cirq, exploring how ternary state machines could underpin real communication hardware.
 
-Using an 8 qutrit grid -- 3 for operations, 1 for client IDs and 4 for the message -- I write, send and receive texts between two clients, Alice and Bob. Message can include lowercase English alphabet, numbers and symbols. No uppercase letters.
+What's in here:
+
+	•	An 8-state hardware-inspired control register (IJK) with a verified single-qutrit-flip adjacency property across every transition
+	•	An 81-state ternary character encoding scheme
+	•	A full messaging pipeline (WRITE → ENCRYPT → SEND → RECEIVE → DECRYPT → READ → STORE → DELETE) between two independent simulated parties, with no entanglement crossing between them
+	•	A working entanglement-based quantum key distribution (QKD) protocol — qutrit Bell pairs, two conjugate measurement bases, sifting, and QBER-based eavesdropper detection, verified empirically against an intercept-resend attack model
+	•	Hardware-noise modeling (amplitude damping) distinguishing generic decoherence from an isolated bad qubit
+	•	Supporting visualization and documentation tooling
+
+On what's actually quantum here: the state machine, encoding, and cipher arithmetic are deterministic — they'd behave identically as classical mod-3 logic, and are simulated on a quantum circuit substrate mainly because ternary logic may matter for future hardware. The QKD protocol is the one place entanglement is functionally load-bearing: it produces a real, non-classical security guarantee (eavesdropper presence is detectable via measurement disturbance), which no amount of classical pre-shared-key exchange can offer.
+
+Stack: Python, Cirq, NumPy, Matplotlib
+
+Status: simulation-only; real quantum hardware would currently only introduce gate error into the deterministic parts of this system, so the QKD protocol and a qubit-based random generator are the two components actually worth porting to real devices next.
