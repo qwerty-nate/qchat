@@ -10,7 +10,7 @@ What's in here:
 	•	Hardware-noise modeling (amplitude damping) distinguishing generic decoherence from an isolated bad qubit
 	•	Supporting visualization and documentation tooling
 
-On what's actually quantum here: the state machine, encoding, and cipher arithmetic are deterministic — they'd behave identically as classical mod-3 logic, and are simulated on a quantum circuit substrate mainly because ternary logic may matter for future hardware. The QKD protocol is the one place entanglement is functionally load-bearing: it produces a real, non-classical security guarantee (eavesdropper presence is detectable via measurement disturbance), which no amount of classical pre-shared-key exchange can offer.
+The QKD protocol is functionally load-bearing: it produces a real, non-classical security guarantee, an eavesdropper is detectable via measurement disturbance.
 
 Stack: Python, Cirq, NumPy, Matplotlib
 
