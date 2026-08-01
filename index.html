@@ -233,6 +233,61 @@
   }
   .chain .arrow{color:var(--brown); font-size:14px;}
 
+  /* ---------- animated circuit ---------- */
+  .circuit-wrap{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:22px 20px 16px;
+    margin-top:26px;
+  }
+  .circuit-tabs{display:flex; gap:8px; margin-bottom:14px;}
+  .circuit-tab{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--muted);
+    padding:6px 12px;
+    border-radius:20px;
+    cursor:pointer;
+    letter-spacing:.03em;
+    transition:border-color .15s, color .15s;
+  }
+  .circuit-tab.active{color:var(--tan); border-color:var(--brown);}
+  .circuit-tab:hover{color:var(--cream);}
+  .circuit-svg-box{width:100%; overflow-x:auto;}
+  .circuit-svg-box svg{display:block; min-width:560px;}
+  .qwire{stroke:var(--line); stroke-width:2;}
+  .qwire-label{font-family:'JetBrains Mono', monospace; font-size:13px; fill:var(--muted);}
+  .qstate-label{font-family:'JetBrains Mono', monospace; font-size:11px; fill:var(--muted); text-anchor:middle;}
+  .qstate-label.on{fill:var(--tan);}
+  .qgate{
+    fill:var(--bg-panel-2);
+    stroke:var(--line);
+    stroke-width:1.5;
+    rx:6;
+    transition:stroke .2s, fill .2s;
+  }
+  .qgate.active{stroke:var(--rust); fill:#4A3B2E;}
+  .qgate-text{font-family:'JetBrains Mono', monospace; font-size:13px; fill:var(--muted); text-anchor:middle; dominant-baseline:middle;}
+  .qgate-text.active{fill:var(--rust);}
+  .qpulse{opacity:0; transition:opacity .2s;}
+  .qpulse.active{opacity:1; animation:qpulse-anim 1.1s ease-out infinite;}
+  @keyframes qpulse-anim{
+    0%{r:4; opacity:.9;}
+    100%{r:16; opacity:0;}
+  }
+  .circuit-readout{
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    color:var(--tan);
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--line);
+  }
+  .circuit-readout .op-label{color:var(--rust);}
+
   .grid2{display:grid; grid-template-columns:1.1fr 1fr; gap:40px;}
   @media (max-width:760px){
     .grid2{grid-template-columns:1fr;}
@@ -448,15 +503,15 @@
   </div>
 
   <div class="hero">
-    <div class="eyebrow">3² state space · ternary quantum messaging</div>
-    <h1>Two parties.<br>One relay. <em>Zero</em> shared entanglement.</h1>
+    <div class="eyebrow">ternary quantum messaging</div>
+    <h1>No shared entanglement,<br>no shared <em>risk</em>.</h1>
     <p>qchat is a qutrit-based communication system: two independent client circuits exchange encrypted messages through a server that only ever sees classical JSON — never the state itself.</p>
   </div>
 
   <div class="stage">
     <div class="cages">
       <div class="cage">
-        <div class="label">Client cage — Alice</div>
+        <div class="label">Client circuit — Alice</div>
         <div class="name">alice</div>
         <div class="qutrits" id="alice-qutrits">
           <div class="qutrit">i</div>
@@ -468,7 +523,7 @@
         <div class="server-node"><span>relay</span></div>
       </div>
       <div class="cage">
-        <div class="label">Client cage — Bob</div>
+        <div class="label">Client circuit — Bob</div>
         <div class="name">bob</div>
         <div class="qutrits" id="bob-qutrits">
           <div class="qutrit">i</div>
@@ -491,8 +546,8 @@
     <div class="wrap">
       <div class="section-head">
         <div class="num">01 — live circuit</div>
-        <h2>Type it, watch it become vectors</h2>
-        <p>Real char → index → trit encoding, run in-browser: each character is looked up in the 80-state table (frequency-ordered lowercase, digits, punctuation), converted to base-3, and prepared on <span class="mono" style="color:var(--tan)">b,c,d,e</span>. Lowercase only — the table doesn't carry case.</p>
+        <h2>Communicate using a quantum circuit</h2>
+        <p>Real char → index → trit encoding, run in-browser: each character is looked up in the 80-state table (frequency-ordered lowercase, digits, punctuation), converted to base-3, and prepared on <span class="mono" style="color:var(--tan)">b,c,d,e</span>.</p>
       </div>
 
       <div class="chatgrid">
@@ -531,23 +586,34 @@
     <div class="wrap">
       <div class="section-head">
         <div class="num">02 — architecture</div>
-        <h2>Three cages, one discipline</h2>
-        <p>Alice and Bob each run an 8-qutrit circuit: <span class="mono" style="color:var(--tan)">ijk</span> as a 3-qutrit state-machine register, <span class="mono" style="color:var(--tan)">abcde</span> as a 5-qutrit data register. The server never crosses entanglement between cages — it relays.</p>
+        <h2>Three circuits, one discipline</h2>
+        <p>Alice and Bob each run an 8-qutrit circuit: <span class="mono" style="color:var(--tan)">ijk</span> as a 3-qutrit state-machine register, <span class="mono" style="color:var(--tan)">abcde</span> as a 5-qutrit data register. The server never crosses entanglement between circuits — it relays.</p>
       </div>
       <div class="grid2">
         <div>
           <h3 style="color:var(--tan); font-size:18px; margin-bottom:14px;">Active operation chain</h3>
-          <div class="chain" id="chain">
-            <div class="step">WRITE</div><div class="arrow">→</div>
-            <div class="step">ENCRYPT</div><div class="arrow">→</div>
-            <div class="step">SEND</div><div class="arrow">→</div>
-            <div class="step">RECEIVE</div><div class="arrow">→</div>
-            <div class="step">DECRYPT</div><div class="arrow">→</div>
-            <div class="step">READ</div><div class="arrow">→</div>
-            <div class="step">STORE</div><div class="arrow">→</div>
-            <div class="step">DELETE</div>
+          <div class="chain" id="chain" style="flex-wrap:wrap; row-gap:10px;">
+            <div class="step">OFF</div><div class="arrow">→</div>
+            <div class="step">ON_SCAN</div>
           </div>
-          <p style="color:var(--muted); font-size:14px; margin-top:18px; line-height:1.6;">Every transition above is exactly one qutrit flip — including tier crossings. That single-flip discipline is the consistency constraint that caught the errors in the original IJK table: a duplicate assignment, a malformed SEND row, an undocumented DELETE fork.</p>
+          <div style="display:flex; gap:18px; margin-top:10px; flex-wrap:wrap;">
+            <div class="chain" style="flex-wrap:wrap; row-gap:10px;">
+              <div class="arrow">↳</div>
+              <div class="step">WRITE</div><div class="arrow">→</div>
+              <div class="step">ENCRYPT</div><div class="arrow">→</div>
+              <div class="step">SEND</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:18px; margin-top:10px; flex-wrap:wrap;">
+            <div class="chain" style="flex-wrap:wrap; row-gap:10px;">
+              <div class="arrow">↳</div>
+              <div class="step">RECEIVE</div><div class="arrow">→</div>
+              <div class="step">DECRYPT</div><div class="arrow">→</div>
+              <div class="step">READ</div><div class="arrow">→</div>
+              <div class="step">STORE</div>
+            </div>
+          </div>
+          <p style="color:var(--muted); font-size:14px; margin-top:18px; line-height:1.6;">The WRITE branch is the send path, the RECEIVE branch is the receive path. Both Alice and Bob carry the same tree and walk whichever branch fits their role for that message — either party can write, encrypt, send, receive, decrypt, read, and store. Every transition is exactly one qutrit flip.</p>
         </div>
         <div>
           <h3 style="color:var(--tan); font-size:18px; margin-bottom:14px;">Tier classifier — I</h3>
@@ -557,33 +623,138 @@
             <tr><td class="val">1</td><td>Processing / Control</td></tr>
             <tr><td class="val">2</td><td>System / Meta</td></tr>
           </table>
-          <p style="color:var(--muted); font-size:13px; margin-top:14px; line-height:1.6;">Level 2 on any qutrit requires <span class="mono" style="color:var(--rust)">XPowGate(dimension=3, exponent=2)</span> — the rust marker in the diagram above.</p>
         </div>
+      </div>
+
+      <div class="circuit-wrap">
+        <div class="circuit-tabs">
+          <button class="circuit-tab active" data-branch="send" onclick="setCircuitBranch('send')">send path</button>
+          <button class="circuit-tab" data-branch="receive" onclick="setCircuitBranch('receive')">receive path</button>
+        </div>
+        <div class="circuit-svg-box">
+          <svg id="circuit-svg" viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="circuit-readout mono" id="circuit-readout">ijk = 0,0,0 · <span class="op-label">OFF</span></div>
       </div>
     </div>
   </section>
 
-  <section id="encoding">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="num">03 — encoding</div>
-        <h2>81 ternary states, 80 in use</h2>
-        <p>The data register maps every printable character — lowercase letters, digits, punctuation, specials — onto a 4-qutrit ternary code. Two states are reserved.</p>
-      </div>
-      <table class="enc">
-        <tr><th>state</th><th>meaning</th></tr>
-        <tr><td class="val mono">0000</td><td>NULL</td></tr>
-        <tr><td class="val mono">0001</td><td>SPACE</td></tr>
-        <tr><td class="val mono">0002 … 2222</td><td>a–z, 0–9, punctuation, specials (78 states)</td></tr>
-      </table>
-    </div>
-  </section>
+  <script>
+  (function(){
+    const WIRES = ['i','j','k'];
+    const BRANCHES = {
+      send: [
+        {name:'OFF', ijk:[0,0,0], flip:null},
+        {name:'ON_SCAN', ijk:[1,0,0], flip:0},
+        {name:'WRITE', ijk:[1,1,0], flip:1},
+        {name:'ENCRYPT', ijk:[1,1,1], flip:2},
+        {name:'SEND', ijk:[2,1,1], flip:0},
+      ],
+      receive: [
+        {name:'OFF', ijk:[0,0,0], flip:null},
+        {name:'ON_SCAN', ijk:[1,0,0], flip:0},
+        {name:'RECEIVE', ijk:[1,0,1], flip:2},
+        {name:'DECRYPT', ijk:[1,0,2], flip:2},
+        {name:'READ', ijk:[1,1,2], flip:1},
+        {name:'STORE', ijk:[2,1,2], flip:0},
+      ],
+    };
+    const svg = document.getElementById('circuit-svg');
+    const readout = document.getElementById('circuit-readout');
+    const NS = 'http://www.w3.org/2000/svg';
+    let branch = 'send';
+    let step = 0;
+    let timer = null;
+
+    function el(tag, attrs){
+      const e = document.createElementNS(NS, tag);
+      for(const k in attrs) e.setAttribute(k, attrs[k]);
+      return e;
+    }
+
+    function layout(steps){
+      const margin = 70, wireGap = 55, top = 30;
+      const n = steps.length;
+      const spacing = (700 - margin*2) / (n - 1);
+      return steps.map((s, idx) => ({ ...s, x: margin + idx*spacing }));
+    }
+
+    function render(){
+      const steps = layout(BRANCHES[branch]);
+      svg.innerHTML = '';
+      const wireGap = 55, top = 30, margin = 70;
+      const lastX = steps[steps.length-1].x;
+
+      // wires + labels
+      WIRES.forEach((w, wi) => {
+        const y = top + wi*wireGap;
+        svg.appendChild(el('line', {x1:margin-30, y1:y, x2:lastX+30, y2:y, class:'qwire'}));
+        svg.appendChild(el('text', {x:margin-46, y:y+4, class:'qwire-label'})).textContent = w;
+      });
+
+      // state labels along the top
+      steps.forEach((s, idx) => {
+        const t = el('text', {x:s.x, y:14, class:'qstate-label' + (idx===step ? ' on' : '')});
+        t.textContent = s.name;
+        svg.appendChild(t);
+      });
+
+      // gate boxes: one per wire per step (after the first), highlighting the flipped wire
+      steps.forEach((s, idx) => {
+        if(idx === 0) return; // OFF has no incoming gate
+        const isActive = idx === step;
+        WIRES.forEach((w, wi) => {
+          const y = top + wi*wireGap;
+          const flipped = s.flip === wi;
+          const box = el('rect', {
+            x:s.x-16, y:y-14, width:32, height:28, rx:6,
+            class:'qgate' + (isActive && flipped ? ' active' : '')
+          });
+          svg.appendChild(box);
+          if(flipped){
+            const t = el('text', {x:s.x, y:y+1, class:'qgate-text' + (isActive ? ' active' : '')});
+            t.textContent = '+1';
+            svg.appendChild(t);
+            const pulse = el('circle', {
+              cx:s.x, cy:y, r:4,
+              class:'qpulse' + (isActive ? ' active' : ''),
+              fill:'var(--rust)'
+            });
+            svg.appendChild(pulse);
+          }
+        });
+      });
+
+      const cur = steps[step];
+      readout.innerHTML = 'ijk = ' + cur.ijk.join(',') + ' · <span class="op-label">' + cur.name + '</span>';
+    }
+
+    function tick(){
+      step = (step + 1) % BRANCHES[branch].length;
+      render();
+    }
+
+    window.setCircuitBranch = function(b){
+      branch = b;
+      step = 0;
+      document.querySelectorAll('.circuit-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.branch === b);
+      });
+      render();
+      clearInterval(timer);
+      timer = setInterval(tick, 1100);
+    };
+
+    render();
+    timer = setInterval(tick, 1100);
+  })();
+  </script>
 
   <section id="qkd">
     <div class="wrap">
       <div class="section-head">
-        <div class="num">04 — key exchange</div>
-        <h2>Eavesdropping shows up as noise</h2>
+        <div class="num">03 — key exchange</div>
+        <h2>Quantum Key Distribution identifies eavesdroppers</h2>
         <p>Key establishment uses qutrit Bell states measured across two conjugate Fourier bases, once per session. An eavesdropper on the channel doesn't get caught by a rule — they get caught by the QBER spiking.</p>
       </div>
       <div class="qber">
@@ -596,21 +767,6 @@
           <div class="qber-bar"><div style="width:50%; background:var(--rust);"></div></div>
         </div>
       </div>
-    </div>
-  </section>
-
-  <section id="code">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="num">05 — the circuit</div>
-        <h2>What's actually quantum here</h2>
-        <p>The message chain is honest, deterministic mod-3 arithmetic — no superposition. QKD and the random-word generator are where the quantum logic lives.</p>
-      </div>
-      <pre class="code"><span class="c"># qchat_payload_circuit.py — single-flip transition check</span>
-<span class="k">def</span> is_valid_transition(state_a, state_b):
-    diff = [(b - a) % 3 <span class="k">for</span> a, b <span class="k">in</span> zip(state_a, state_b)]
-    flips = sum(1 <span class="k">for</span> d <span class="k">in</span> diff <span class="k">if</span> d != 0)
-    <span class="k">return</span> flips == 1  <span class="c"># exactly one qutrit moves, every time</span></pre>
     </div>
   </section>
 
@@ -648,11 +804,14 @@ function typeBoot(){
 typeBoot();
 
 // ---- ijk odometer: cycling the real confirmed op chain vectors ----
-const ops = ["WRITE","ENCRYPT","SEND","RECEIVE","DECRYPT","READ","STORE","DELETE"];
-// confirmed state assignments from IJK table (0/1/2 basis)
+const ops = ["WRITE","ENCRYPT","SEND","RECEIVE","DECRYPT","READ","STORE"];
+// confirmed state assignments from the unified IJK tree (0/1/2 basis).
+// OFF -> ON_SCAN is the branch point: WRITE branch is the send path,
+// RECEIVE branch is the receive path. Either party can walk either branch.
 const IJK = {
-  OFF:[0,0,0], "ON/SCAN":[1,0,0], READ:[1,0,1], WRITE:[1,1,0], STORE:[1,1,1],
-  ENCRYPT:[1,0,2], DECRYPT:[1,2,0], DELETE:[1,2,2], SEND:[1,1,2], RECEIVE:[1,2,1]
+  OFF:[0,0,0], "ON/SCAN":[1,0,0],
+  WRITE:[1,1,0], ENCRYPT:[1,1,1], SEND:[2,1,1],
+  RECEIVE:[1,0,1], DECRYPT:[1,0,2], READ:[1,1,2], STORE:[2,1,2]
 };
 const vectors = ops.map(o => IJK[o]);
 let opIndex = 0;
@@ -784,7 +943,6 @@ async function sendMessage(from){
   await sleep(240);
   setIjkBadge(toIjkEl, 'READ');
   await sleep(240);
-  setIjkBadge(fromIjkEl, 'STORE');
   setIjkBadge(toIjkEl, 'STORE');
   inputEl.disabled = false;
   inputEl.focus();
