@@ -1,6 +1,8 @@
 qchat
 A simulated qutrit-based (3-level quantum system) messaging architecture built in Cirq, exploring how ternary state machines could underpin real communication hardware.
 
+Demo live at https://qchat-alpha.vercel.app/
+
 What's in here:
 
 	•	An 8-state hardware-inspired control register (IJK) with a verified single-qutrit-flip adjacency property across every transition
