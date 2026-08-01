@@ -16,4 +16,4 @@ The QKD protocol is functionally load-bearing: it produces a real, non-classical
 
 Stack: Python, Cirq, NumPy, Matplotlib
 
-Status: simulation-only; real quantum hardware would currently only introduce gate error into the deterministic parts of this system, so the QKD protocol and a qubit-based random generator are the two components actually worth porting to real devices next.
+Status: simulation-only; real quantum hardware would introduce gate error into the deterministic parts of this system.
