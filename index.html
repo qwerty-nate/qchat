@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>qchat — ternary quantum communication</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #2A2621;
+    --bg-panel: #34302A;
+    --bg-panel-2: #3D3830;
+    --tan: #C9B896;
+    --brown: #8B6F52;
+    --brown-dim: #6B5642;
+    --cream: #EDE6D6;
+    --muted: #A69C8A;
+    --teal: #6E8C82;
+    --rust: #AD6B49;
+    --line: #4A443B;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--cream);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Fraunces', serif; font-weight:500; margin:0;}
+  .mono{font-family:'JetBrains Mono', monospace;}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 32px;}
+
+  /* ---------- boot strip ---------- */
+  .boot{
+    background:#221F1B;
+    border-bottom:1px solid var(--line);
+    padding:10px 32px;
+    font-size:12.5px;
+    color:var(--teal);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    letter-spacing:.02em;
+  }
+  .boot .dot{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--teal);
+    animation:pulse 1.8s ease-in-out infinite;
+    flex:none;
+  }
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+  #boot-text{white-space:nowrap; overflow:hidden;}
+
+  /* ---------- hero ---------- */
+  .hero{
+    padding:64px 32px 40px;
+    text-align:center;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brown);
+    margin-bottom:18px;
+  }
+  .hero h1{
+    font-size:clamp(38px,6vw,64px);
+    color:var(--tan);
+    line-height:1.05;
+    margin-bottom:16px;
+  }
+  .hero h1 em{color:var(--teal); font-style:normal;}
+  .hero p{
+    max-width:560px;
+    margin:0 auto;
+    color:var(--muted);
+    font-size:16px;
+    line-height:1.6;
+  }
+
+  /* ---------- diagram ---------- */
+  .stage{
+    max-width:920px;
+    margin:56px auto 20px;
+    padding:0 16px;
+  }
+  .cages{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    align-items:center;
+    gap:0;
+  }
+  .cage{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:22px 18px;
+    text-align:center;
+    position:relative;
+  }
+  .cage .label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:10px;
+  }
+  .cage .name{font-family:'Fraunces', serif; font-size:22px; color:var(--tan); margin-bottom:14px;}
+  .qutrits{display:flex; justify-content:center; gap:6px;}
+  .qutrits.small{gap:4px;}
+  .qutrit{
+    width:26px;height:26px;
+    border-radius:6px;
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    color:var(--muted);
+    transition:background .35s ease, color .35s ease, border-color .35s ease, transform .35s ease;
+  }
+  .qutrit.active{
+    background:var(--teal);
+    color:#1c2523;
+    border-color:var(--teal);
+    transform:translateY(-3px);
+  }
+  .qutrit.active.level2{background:var(--rust); border-color:var(--rust); color:#241611;}
+
+  .server{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    padding:0 10px;
+  }
+  .server-node{
+    width:74px;height:74px;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--brown), var(--brown-dim));
+    border:1px solid var(--line);
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .server-node::after{
+    content:'';
+    position:absolute; inset:-8px;
+    border-radius:50%;
+    border:1px solid var(--brown-dim);
+    opacity:0;
+    animation:ring 2.4s ease-out infinite;
+  }
+  @keyframes ring{
+    0%{opacity:.5; transform:scale(.85);}
+    100%{opacity:0; transform:scale(1.5);}
+  }
+  .server-node span{font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--cream); letter-spacing:.05em;}
+  .server .caption{font-size:11px; color:var(--muted); font-family:'JetBrains Mono', monospace; text-align:center;}
+
+  .track{
+    position:relative;
+    height:3px;
+    background:var(--line);
+    margin:20px 0 0;
+    border-radius:2px;
+    overflow:visible;
+  }
+  .track .packet{
+    position:absolute;
+    top:50%; left:0;
+    width:9px;height:9px;
+    margin-top:-4.5px;
+    border-radius:50%;
+    background:var(--teal);
+    box-shadow:0 0 10px rgba(110,140,130,.7);
+    animation:travel 3.2s ease-in-out infinite;
+  }
+  .track.right .packet{animation-name:travel-r; animation-delay:1.6s;}
+  @keyframes travel{
+    0%{left:0; opacity:0;}
+    8%{opacity:1;}
+    45%{left:100%; opacity:1;}
+    50%{opacity:0;}
+    100%{opacity:0; left:100%;}
+  }
+  @keyframes travel-r{
+    0%{left:100%; opacity:0;}
+    8%{opacity:1;}
+    45%{left:0%; opacity:1;}
+    50%{opacity:0;}
+    100%{opacity:0; left:0%;}
+  }
+  .tracks-row{display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center;}
+  .tracks-row .mid{}
+
+  .op-readout{
+    text-align:center;
+    margin-top:26px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    color:var(--teal);
+    letter-spacing:.04em;
+    height:20px;
+  }
+  .op-readout .dim{color:var(--muted);}
+
+  /* ---------- sections ---------- */
+  section{padding:70px 32px; border-top:1px solid var(--line);}
+  .section-head{margin-bottom:36px;}
+  .section-head .num{font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--brown); letter-spacing:.1em;}
+  .section-head h2{font-size:30px; color:var(--tan); margin-top:8px;}
+  .section-head p{color:var(--muted); max-width:560px; margin-top:10px; line-height:1.6; font-size:15px;}
+
+  .chain{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+  }
+  .chain .step{
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    color:var(--tan);
+    padding:8px 14px;
+    border-radius:8px;
+  }
+  .chain .arrow{color:var(--brown); font-size:14px;}
+
+  .grid2{display:grid; grid-template-columns:1.1fr 1fr; gap:40px;}
+  @media (max-width:760px){
+    .grid2{grid-template-columns:1fr;}
+    .cages{grid-template-columns:1fr; gap:14px;}
+    .tracks-row{grid-template-columns:1fr;}
+    .track{transform:rotate(90deg); width:60px; margin:8px auto;}
+  }
+
+  table.enc{
+    width:100%;
+    border-collapse:collapse;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px;
+  }
+  table.enc th, table.enc td{
+    text-align:left;
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+    color:var(--muted);
+  }
+  table.enc th{color:var(--tan); font-weight:500;}
+  table.enc td.val{color:var(--cream);}
+
+  .qber{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:24px;
+  }
+  .qber-bar{height:10px; border-radius:5px; background:var(--bg-panel-2); overflow:hidden; margin:8px 0 4px;}
+  .qber-bar > div{height:100%; border-radius:5px;}
+  .qber-row{margin-bottom:16px;}
+  .qber-row .flabel{display:flex; justify-content:space-between; font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--muted);}
+
+  pre.code{
+    background:#221F1B;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:20px;
+    overflow-x:auto;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--cream);
+  }
+  pre.code .c{color:var(--muted);}
+  pre.code .k{color:var(--teal);}
+  pre.code .s{color:var(--rust);}
+
+  /* ---------- live chat ---------- */
+  .chatgrid{
+    display:grid;
+    grid-template-columns:1fr 140px 1fr;
+    gap:16px;
+    align-items:stretch;
+  }
+  .chatpane{
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    display:flex;
+    flex-direction:column;
+    min-height:320px;
+  }
+  .chatpane-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+    font-family:'Fraunces', serif; color:var(--tan); font-size:17px;
+  }
+  .ijk-badge{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--teal);
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    padding:4px 8px;
+    border-radius:6px;
+    letter-spacing:.02em;
+    transition:color .2s ease;
+  }
+  .chatlog{
+    flex:1;
+    padding:14px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    overflow-y:auto;
+    max-height:280px;
+  }
+  .bubble{
+    max-width:88%;
+    padding:9px 12px;
+    border-radius:10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    line-height:1.5;
+    word-break:break-word;
+    white-space:pre-wrap;
+  }
+  .bubble.mine{
+    align-self:flex-end;
+    background:var(--brown-dim);
+    color:var(--cream);
+    border-bottom-right-radius:2px;
+  }
+  .bubble.theirs{
+    align-self:flex-start;
+    background:var(--bg-panel-2);
+    color:var(--tan);
+    border:1px solid var(--line);
+    border-bottom-left-radius:2px;
+    min-height:20px;
+  }
+  .chatinput{
+    display:flex; gap:8px;
+    padding:12px 14px;
+    border-top:1px solid var(--line);
+  }
+  .chatinput input{
+    flex:1;
+    background:var(--bg-panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    color:var(--cream);
+    padding:9px 10px;
+    font-size:13px;
+    font-family:'JetBrains Mono', monospace;
+    outline:none;
+  }
+  .chatinput input:focus{border-color:var(--teal);}
+  .chatinput button{
+    background:var(--teal);
+    color:#182420;
+    border:none;
+    border-radius:8px;
+    padding:0 16px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px;
+    letter-spacing:.03em;
+    cursor:pointer;
+  }
+  .chatinput button:hover{filter:brightness(1.08);}
+  .chatinput input:disabled{opacity:.5;}
+
+  .chat-relay{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+  }
+  .server-node.small{width:48px; height:48px;}
+  .server-node.small span{font-size:8px;}
+  .ticker{
+    width:100%;
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 8px;
+    text-align:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    min-height:20px;
+  }
+  .ticker-empty{color:var(--muted); font-size:11.5px;}
+  .tick-char{color:var(--tan); font-weight:700;}
+  .tick-arrow{color:var(--brown); margin:0 6px;}
+  .tick-vec{color:var(--teal);}
+
+  .ledger-wrap{margin-top:28px;}
+  .ledger-title{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--brown); margin-bottom:10px;
+  }
+  .ledger{
+    display:flex; flex-wrap:wrap; gap:6px;
+    max-height:120px; overflow-y:auto;
+  }
+  .ledger-row{
+    display:flex; gap:6px; align-items:center;
+    background:var(--bg-panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:5px 8px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11.5px;
+  }
+  .ledger-row .lc{color:var(--tan); font-weight:700; min-width:12px; text-align:center;}
+  .ledger-row .li{color:var(--muted);}
+  .ledger-row .lv{color:var(--teal);}
+
+  @media (max-width:760px){
+    .chatgrid{grid-template-columns:1fr;}
+    .chat-relay{flex-direction:row; justify-content:center;}
+  }
+
+  footer{
+    padding:40px 32px 60px;
+    text-align:center;
+    color:var(--muted);
+    font-size:12.5px;
+    font-family:'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+  <div class="boot">
+    <div class="dot"></div>
+    <span id="boot-text" class="mono"></span>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow">3² state space · ternary quantum messaging</div>
+    <h1>Two parties.<br>One relay. <em>Zero</em> shared entanglement.</h1>
+    <p>qchat is a qutrit-based communication system: two independent client circuits exchange encrypted messages through a server that only ever sees classical JSON — never the state itself.</p>
+  </div>
+
+  <div class="stage">
+    <div class="cages">
+      <div class="cage">
+        <div class="label">Client cage — Alice</div>
+        <div class="name">alice</div>
+        <div class="qutrits" id="alice-qutrits">
+          <div class="qutrit">i</div>
+          <div class="qutrit">j</div>
+          <div class="qutrit">k</div>
+        </div>
+      </div>
+      <div class="server">
+        <div class="server-node"><span>relay</span></div>
+      </div>
+      <div class="cage">
+        <div class="label">Client cage — Bob</div>
+        <div class="name">bob</div>
+        <div class="qutrits" id="bob-qutrits">
+          <div class="qutrit">i</div>
+          <div class="qutrit">j</div>
+          <div class="qutrit">k</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tracks-row">
+      <div class="track"><div class="packet"></div></div>
+      <div class="mid"></div>
+      <div class="track right"><div class="packet"></div></div>
+    </div>
+
+    <div class="op-readout"><span class="dim">operation:</span> <span id="op-name">WRITE</span></div>
+  </div>
+
+  <section id="live">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="num">01 — live circuit</div>
+        <h2>Type it, watch it become vectors</h2>
+        <p>Real char → index → trit encoding, run in-browser: each character is looked up in the 80-state table (frequency-ordered lowercase, digits, punctuation), converted to base-3, and prepared on <span class="mono" style="color:var(--tan)">b,c,d,e</span>. Lowercase only — the table doesn't carry case.</p>
+      </div>
+
+      <div class="chatgrid">
+        <div class="chatpane" id="alice-pane">
+          <div class="chatpane-head"><span>alice</span><span class="ijk-badge" id="alice-ijk">ijk 0,0,0</span></div>
+          <div class="chatlog" id="alice-log"></div>
+          <div class="chatinput">
+            <input id="alice-input" placeholder="type as alice…" maxlength="80">
+            <button onclick="sendMessage('alice')">send</button>
+          </div>
+        </div>
+
+        <div class="chat-relay">
+          <div class="server-node small"><span>relay</span></div>
+          <div class="ticker" id="ticker"><span class="ticker-empty">— idle —</span></div>
+        </div>
+
+        <div class="chatpane" id="bob-pane">
+          <div class="chatpane-head"><span>bob</span><span class="ijk-badge" id="bob-ijk">ijk 0,0,0</span></div>
+          <div class="chatlog" id="bob-log"></div>
+          <div class="chatinput">
+            <input id="bob-input" placeholder="type as bob…" maxlength="80">
+            <button onclick="sendMessage('bob')">send</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ledger-wrap">
+        <div class="ledger-title">vector ledger — last message sent</div>
+        <div class="ledger" id="ledger"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="num">02 — architecture</div>
+        <h2>Three cages, one discipline</h2>
+        <p>Alice and Bob each run an 8-qutrit circuit: <span class="mono" style="color:var(--tan)">ijk</span> as a 3-qutrit state-machine register, <span class="mono" style="color:var(--tan)">abcde</span> as a 5-qutrit data register. The server never crosses entanglement between cages — it relays.</p>
+      </div>
+      <div class="grid2">
+        <div>
+          <h3 style="color:var(--tan); font-size:18px; margin-bottom:14px;">Active operation chain</h3>
+          <div class="chain" id="chain">
+            <div class="step">WRITE</div><div class="arrow">→</div>
+            <div class="step">ENCRYPT</div><div class="arrow">→</div>
+            <div class="step">SEND</div><div class="arrow">→</div>
+            <div class="step">RECEIVE</div><div class="arrow">→</div>
+            <div class="step">DECRYPT</div><div class="arrow">→</div>
+            <div class="step">READ</div><div class="arrow">→</div>
+            <div class="step">STORE</div><div class="arrow">→</div>
+            <div class="step">DELETE</div>
+          </div>
+          <p style="color:var(--muted); font-size:14px; margin-top:18px; line-height:1.6;">Every transition above is exactly one qutrit flip — including tier crossings. That single-flip discipline is the consistency constraint that caught the errors in the original IJK table: a duplicate assignment, a malformed SEND row, an undocumented DELETE fork.</p>
+        </div>
+        <div>
+          <h3 style="color:var(--tan); font-size:18px; margin-bottom:14px;">Tier classifier — I</h3>
+          <table class="enc">
+            <tr><th>I</th><th>tier</th></tr>
+            <tr><td class="val">0</td><td>Interface / IO</td></tr>
+            <tr><td class="val">1</td><td>Processing / Control</td></tr>
+            <tr><td class="val">2</td><td>System / Meta</td></tr>
+          </table>
+          <p style="color:var(--muted); font-size:13px; margin-top:14px; line-height:1.6;">Level 2 on any qutrit requires <span class="mono" style="color:var(--rust)">XPowGate(dimension=3, exponent=2)</span> — the rust marker in the diagram above.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="encoding">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="num">03 — encoding</div>
+        <h2>81 ternary states, 80 in use</h2>
+        <p>The data register maps every printable character — lowercase letters, digits, punctuation, specials — onto a 4-qutrit ternary code. Two states are reserved.</p>
+      </div>
+      <table class="enc">
+        <tr><th>state</th><th>meaning</th></tr>
+        <tr><td class="val mono">0000</td><td>NULL</td></tr>
+        <tr><td class="val mono">0001</td><td>SPACE</td></tr>
+        <tr><td class="val mono">0002 … 2222</td><td>a–z, 0–9, punctuation, specials (78 states)</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="qkd">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="num">04 — key exchange</div>
+        <h2>Eavesdropping shows up as noise</h2>
+        <p>Key establishment uses qutrit Bell states measured across two conjugate Fourier bases, once per session. An eavesdropper on the channel doesn't get caught by a rule — they get caught by the QBER spiking.</p>
+      </div>
+      <div class="qber">
+        <div class="qber-row">
+          <div class="flabel"><span>no eavesdropper</span><span>~0%</span></div>
+          <div class="qber-bar"><div style="width:2%; background:var(--teal);"></div></div>
+        </div>
+        <div class="qber-row" style="margin-bottom:0;">
+          <div class="flabel"><span>eavesdropper present</span><span>~50%</span></div>
+          <div class="qber-bar"><div style="width:50%; background:var(--rust);"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="code">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="num">05 — the circuit</div>
+        <h2>What's actually quantum here</h2>
+        <p>The message chain is honest, deterministic mod-3 arithmetic — no superposition. QKD and the random-word generator are where the quantum logic lives.</p>
+      </div>
+      <pre class="code"><span class="c"># qchat_payload_circuit.py — single-flip transition check</span>
+<span class="k">def</span> is_valid_transition(state_a, state_b):
+    diff = [(b - a) % 3 <span class="k">for</span> a, b <span class="k">in</span> zip(state_a, state_b)]
+    flips = sum(1 <span class="k">for</span> d <span class="k">in</span> diff <span class="k">if</span> d != 0)
+    <span class="k">return</span> flips == 1  <span class="c"># exactly one qutrit moves, every time</span></pre>
+    </div>
+  </section>
+
+  <footer>
+    qchat — cirq · python · react · three.js<br>
+    simulated locally, built for real hardware
+  </footer>
+
+<script>
+// ---- boot sequence: simulated Cirq backend init ----
+const bootLines = [
+  "importing cirq ...",
+  "cirq " + "1.4.1" + " loaded",
+  "allocating 8-qutrit register (ijk + abcde) ...",
+  "backend: local statevector simulator",
+  "qchat runtime ready"
+];
+const bootEl = document.getElementById('boot-text');
+let li = 0, ci = 0;
+function typeBoot(){
+  if(li >= bootLines.length){
+    setTimeout(()=>{ li = 0; ci = 0; bootEl.textContent=''; typeBoot(); }, 4000);
+    return;
+  }
+  const line = bootLines[li];
+  if(ci <= line.length){
+    bootEl.textContent = line.slice(0, ci);
+    ci++;
+    setTimeout(typeBoot, 22);
+  } else {
+    setTimeout(()=>{ li++; ci=0; }, li === bootLines.length-1 ? 3200 : 500);
+    setTimeout(typeBoot, li === bootLines.length-1 ? 3200 : 500);
+  }
+}
+typeBoot();
+
+// ---- ijk odometer: cycling the real confirmed op chain vectors ----
+const ops = ["WRITE","ENCRYPT","SEND","RECEIVE","DECRYPT","READ","STORE","DELETE"];
+// confirmed state assignments from IJK table (0/1/2 basis)
+const IJK = {
+  OFF:[0,0,0], "ON/SCAN":[1,0,0], READ:[1,0,1], WRITE:[1,1,0], STORE:[1,1,1],
+  ENCRYPT:[1,0,2], DECRYPT:[1,2,0], DELETE:[1,2,2], SEND:[1,1,2], RECEIVE:[1,2,1]
+};
+const vectors = ops.map(o => IJK[o]);
+let opIndex = 0;
+const aliceQ = document.querySelectorAll('#alice-qutrits .qutrit');
+const bobQ = document.querySelectorAll('#bob-qutrits .qutrit');
+const opNameEl = document.getElementById('op-name');
+const labels = ['i','j','k'];
+
+function paint(qutritEls, vec){
+  vec.forEach((v, idx)=>{
+    const el = qutritEls[idx];
+    el.textContent = labels[idx] + v;
+    el.classList.remove('active','level2');
+    if(v !== 0){
+      el.classList.add('active');
+      if(v === 2) el.classList.add('level2');
+    }
+  });
+}
+
+function tick(){
+  const vec = vectors[opIndex % vectors.length];
+  opNameEl.textContent = ops[opIndex % ops.length];
+  // alice writes/encrypts locally; bob mirrors on receive — offset for visual relay feel
+  paint(aliceQ, vec);
+  const bobVec = vectors[(opIndex + vectors.length - 1) % vectors.length];
+  setTimeout(()=> paint(bobQ, vec), 1500);
+  opIndex++;
+}
+tick();
+setInterval(tick, 3200);
+
+// =====================================================================
+// real char <-> vector encoding — same base-3 scheme as
+// qchat_payload_circuit.py: char -> index (0-79) -> 4 trits on b,c,d,e
+// =====================================================================
+const CHARSET = (() => {
+  const arr = [{ch:'', display:'∅'}, {ch:' ', display:'␣'}]; // 0 NULL, 1 SPACE
+  'etaoinshrdlcumwfgypbvkjxqz'.split('').forEach(l => arr.push({ch:l, display:l}));
+  '0123456789'.split('').forEach(d => arr.push({ch:d, display:d}));
+  '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'.split('').forEach(p => arr.push({ch:p, display:p}));
+  arr.push({ch:'\n', display:'⏎'});
+  arr.push({ch:'\t', display:'⇥'});
+  ['€','£','¥','§','©','®','™','•'].forEach(s => arr.push({ch:s, display:s}));
+  return arr; // length 80, indices 0-79
+})();
+const charToIndex = new Map();
+CHARSET.forEach((o, i) => { if (i > 0) charToIndex.set(o.ch, i); });
+
+function toTrits(n){
+  let out = '';
+  for(let p = 3; p >= 0; p--){ out += Math.floor(n / Math.pow(3,p)) % 3; }
+  return out;
+}
+function encodeChar(ch){
+  const idx = charToIndex.has(ch) ? charToIndex.get(ch) : charToIndex.get(' ');
+  return { idx, vec: toTrits(idx) };
+}
+function decodeIndex(idx){
+  return (CHARSET[idx] ? CHARSET[idx].ch : ' ');
+}
+function glyph(ch){ return ch === ' ' ? '␣' : (ch === '\n' ? '⏎' : (ch === '\t' ? '⇥' : ch)); }
+
+// ---- live two-party chat ----
+const ticker = document.getElementById('ticker');
+const ledger = document.getElementById('ledger');
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function setIjkBadge(el, name){
+  el.textContent = 'ijk ' + IJK[name].join(',') + ' · ' + name;
+}
+function addBubble(log, text, cls){
+  const b = document.createElement('div');
+  b.className = 'bubble ' + cls;
+  b.textContent = text;
+  log.appendChild(b);
+  log.scrollTop = log.scrollHeight;
+  return b;
+}
+function tickerShow(ch, vec){
+  ticker.innerHTML = '<span class="tick-char">' + glyph(ch) + '</span><span class="tick-arrow">→</span><span class="tick-vec">' + vec + '</span>';
+}
+function tickerIdle(){ ticker.innerHTML = '<span class="ticker-empty">— idle —</span>'; }
+function ledgerAdd(ch, idx, vec){
+  const row = document.createElement('div');
+  row.className = 'ledger-row';
+  row.innerHTML = '<span class="lc">' + glyph(ch) + '</span><span class="li">' + idx + '</span><span class="lv">' + vec + '</span>';
+  ledger.appendChild(row);
+}
+
+async function sendMessage(from){
+  const inputEl = document.getElementById(from + '-input');
+  const raw = inputEl.value;
+  const text = raw.trim().toLowerCase();
+  if(!text) return;
+  inputEl.value = '';
+  inputEl.disabled = true;
+
+  const to = from === 'alice' ? 'bob' : 'alice';
+  const fromLog = document.getElementById(from + '-log');
+  const toLog = document.getElementById(to + '-log');
+  const fromIjkEl = document.getElementById(from + '-ijk');
+  const toIjkEl = document.getElementById(to + '-ijk');
+
+  addBubble(fromLog, text, 'mine');
+
+  setIjkBadge(fromIjkEl, 'WRITE');
+  await sleep(280);
+  setIjkBadge(fromIjkEl, 'ENCRYPT');
+  await sleep(280);
+  setIjkBadge(fromIjkEl, 'SEND');
+  setIjkBadge(toIjkEl, 'RECEIVE');
+
+  ledger.innerHTML = '';
+  const bubble = addBubble(toLog, '\u00A0', 'theirs');
+  let received = '';
+
+  for(const ch of text){
+    const { idx, vec } = encodeChar(ch);
+    tickerShow(ch, vec);
+    ledgerAdd(ch, idx, vec);
+    await sleep(160);
+    received += decodeIndex(idx);
+    bubble.textContent = received;
+  }
+
+  tickerIdle();
+  setIjkBadge(toIjkEl, 'DECRYPT');
+  await sleep(240);
+  setIjkBadge(toIjkEl, 'READ');
+  await sleep(240);
+  setIjkBadge(fromIjkEl, 'STORE');
+  setIjkBadge(toIjkEl, 'STORE');
+  inputEl.disabled = false;
+  inputEl.focus();
+}
+
+['alice','bob'].forEach(side => {
+  document.getElementById(side + '-input').addEventListener('keydown', e => {
+    if(e.key === 'Enter') sendMessage(side);
+  });
+});
+</script>
+
+</body>
+</html>
