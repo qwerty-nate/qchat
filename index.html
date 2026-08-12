@@ -433,6 +433,24 @@
   .chatinput button:hover{filter:brightness(1.08);}
   .chatinput input:disabled{opacity:.5;}
 
+  .mode-toggle{display:flex; border:1px solid var(--line); border-radius:20px; overflow:hidden;}
+  .mode-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    background:transparent;
+    border:none;
+    color:var(--muted);
+    padding:4px 10px;
+    cursor:pointer;
+    letter-spacing:.03em;
+  }
+  .mode-btn.active{background:var(--bg-panel-2); color:var(--tan);}
+  .mode-btn:hover{color:var(--cream);}
+
+  .status-dot{width:6px; height:6px; border-radius:50%; background:var(--teal); flex:none;}
+  .status-dot.thinking{background:var(--rust); animation:pulse 1s ease-in-out infinite;}
+  .status-dot.error{background:var(--rust);}
+
   .chat-relay{
     display:flex;
     flex-direction:column;
@@ -500,7 +518,6 @@
   <div class="boot">
     <div class="dot"></div>
     <span id="boot-text" class="mono"></span>
-    <button id="api-key-btn" class="mono" style="margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">api key</button>
   </div>
 
   <div class="hero">
@@ -567,12 +584,27 @@
         </div>
 
         <div class="chatpane" id="bob-pane">
-          <div class="chatpane-head"><span>bob · ai</span><span class="ijk-badge" id="bob-ijk">ijk 0,0,0</span></div>
+          <div class="chatpane-head">
+            <span>bob</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="mode-toggle" id="bob-mode-toggle">
+                <button type="button" class="mode-btn active" data-mode="manual" onclick="setBobMode('manual')">manual</button>
+                <button type="button" class="mode-btn" data-mode="ai" onclick="setBobMode('ai')">ai</button>
+              </div>
+              <span class="ijk-badge" id="bob-ijk">ijk 0,0,0</span>
+            </div>
+          </div>
           <div class="chatlog" id="bob-log"></div>
-          <div class="chatinput" style="justify-content:center;">
-            <span id="bob-status" class="mono" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;">
-              <span class="dot" style="width:6px;height:6px;"></span> online
+          <div class="chatinput" id="bob-input-row">
+            <input id="bob-input" placeholder="type as bob…" maxlength="80">
+            <button onclick="sendMessage('bob')">send</button>
+          </div>
+          <div class="chatinput" id="bob-status-row" style="display:none; align-items:center; justify-content:space-between;">
+            <span class="mono" style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+              <span class="status-dot" id="bob-status-dot"></span>
+              <span id="bob-status-text">online</span>
             </span>
+            <button id="api-key-btn" class="mono" style="background:transparent; border:1px solid var(--line); color:var(--muted); font-size:10.5px; padding:4px 10px; border-radius:14px; cursor:pointer;">api key</button>
           </div>
         </div>
       </div>
@@ -904,10 +936,20 @@ function ledgerAdd(ch, idx, vec){
   ledger.appendChild(row);
 }
 
-// ---- bob's AI brain ----
-const BOB_SYSTEM_PROMPT = "You are Bob, chatting casually with Alice over a simulated quantum-encrypted messaging channel called qchat. Keep replies short \u2014 one or two sentences \u2014 casual and conversational, like a real text exchange. Don't mention that you're an AI unless asked directly.";
+// ---- bob's mode: manual (types like alice) or ai (replies via Claude API) ----
+let bobMode = 'manual';
 const bobHistory = [];
-const bobStatusEl = document.getElementById('bob-status');
+const BOB_SYSTEM_PROMPT = "You are Bob, chatting casually with Alice over a simulated quantum-encrypted messaging channel called qchat. Keep replies short \u2014 one or two sentences \u2014 casual and conversational, like a real text exchange. Don't mention that you're an AI unless asked directly.";
+
+window.setBobMode = function(mode){
+  bobMode = mode;
+  document.querySelectorAll('#bob-mode-toggle .mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  document.getElementById('bob-input-row').style.display = mode === 'manual' ? 'flex' : 'none';
+  document.getElementById('bob-status-row').style.display = mode === 'ai' ? 'flex' : 'none';
+  if(mode === 'ai') setBobStatus('online');
+};
 
 function getApiKey(){
   let key = localStorage.getItem('qchat_anthropic_key');
@@ -928,13 +970,18 @@ document.getElementById('api-key-btn').addEventListener('click', () => {
 });
 
 function setBobStatus(mode){
-  if(!bobStatusEl) return;
+  const dot = document.getElementById('bob-status-dot');
+  const text = document.getElementById('bob-status-text');
+  if(!dot || !text) return;
+  dot.classList.remove('thinking', 'error');
   if(mode === 'thinking'){
-    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;"></span> composing\u2026';
+    dot.classList.add('thinking');
+    text.textContent = 'composing\u2026';
   } else if(mode === 'error'){
-    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;background:var(--rust);"></span> reply failed \u2014 check api key';
+    dot.classList.add('error');
+    text.textContent = 'reply failed \u2014 check api key';
   } else {
-    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;"></span> online';
+    text.textContent = 'online';
   }
 }
 
@@ -1019,18 +1066,19 @@ async function transmit(from, rawText){
 }
 
 async function sendMessage(from){
-  if(from !== 'alice') return; // bob's replies are AI-driven, not typed manually
-  const inputEl = document.getElementById('alice-input');
+  if(from === 'bob' && bobMode !== 'manual') return;
+  const inputEl = document.getElementById(from + '-input');
   const raw = inputEl.value;
   if(!raw.trim()) return;
   inputEl.value = '';
   inputEl.disabled = true;
 
-  const sent = await transmit('alice', raw);
+  const sent = await transmit(from, raw);
+
   inputEl.disabled = false;
   inputEl.focus();
 
-  if(sent) await triggerBobReply(sent);
+  if(from === 'alice' && bobMode === 'ai' && sent) await triggerBobReply(sent);
 }
 
 async function triggerBobReply(aliceText){
@@ -1051,8 +1099,10 @@ async function triggerBobReply(aliceText){
   }
 }
 
-document.getElementById('alice-input').addEventListener('keydown', e => {
-  if(e.key === 'Enter') sendMessage('alice');
+['alice','bob'].forEach(side => {
+  document.getElementById(side + '-input').addEventListener('keydown', e => {
+    if(e.key === 'Enter') sendMessage(side);
+  });
 });
 </script>
 
