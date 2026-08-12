@@ -500,6 +500,7 @@
   <div class="boot">
     <div class="dot"></div>
     <span id="boot-text" class="mono"></span>
+    <button id="api-key-btn" class="mono" style="margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">api key</button>
   </div>
 
   <div class="hero">
@@ -566,11 +567,12 @@
         </div>
 
         <div class="chatpane" id="bob-pane">
-          <div class="chatpane-head"><span>bob</span><span class="ijk-badge" id="bob-ijk">ijk 0,0,0</span></div>
+          <div class="chatpane-head"><span>bob · ai</span><span class="ijk-badge" id="bob-ijk">ijk 0,0,0</span></div>
           <div class="chatlog" id="bob-log"></div>
-          <div class="chatinput">
-            <input id="bob-input" placeholder="type as bob…" maxlength="80">
-            <button onclick="sendMessage('bob')">send</button>
+          <div class="chatinput" style="justify-content:center;">
+            <span id="bob-status" class="mono" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;">
+              <span class="dot" style="width:6px;height:6px;"></span> online
+            </span>
           </div>
         </div>
       </div>
@@ -902,13 +904,81 @@ function ledgerAdd(ch, idx, vec){
   ledger.appendChild(row);
 }
 
-async function sendMessage(from){
-  const inputEl = document.getElementById(from + '-input');
-  const raw = inputEl.value;
-  const text = raw.trim().toLowerCase();
-  if(!text) return;
-  inputEl.value = '';
-  inputEl.disabled = true;
+// ---- bob's AI brain ----
+const BOB_SYSTEM_PROMPT = "You are Bob, chatting casually with Alice over a simulated quantum-encrypted messaging channel called qchat. Keep replies short \u2014 one or two sentences \u2014 casual and conversational, like a real text exchange. Don't mention that you're an AI unless asked directly.";
+const bobHistory = [];
+const bobStatusEl = document.getElementById('bob-status');
+
+function getApiKey(){
+  let key = localStorage.getItem('qchat_anthropic_key');
+  if(!key){
+    key = prompt('Enter your Anthropic API key so Bob can reply with real AI (stored only in this browser):');
+    if(key && key.trim()) localStorage.setItem('qchat_anthropic_key', key.trim());
+  }
+  return key ? key.trim() : null;
+}
+
+document.getElementById('api-key-btn').addEventListener('click', () => {
+  const current = localStorage.getItem('qchat_anthropic_key') || '';
+  const key = prompt('Anthropic API key (stored only in this browser):', current);
+  if(key === null) return;
+  const trimmed = key.trim();
+  if(trimmed) localStorage.setItem('qchat_anthropic_key', trimmed);
+  else localStorage.removeItem('qchat_anthropic_key');
+});
+
+function setBobStatus(mode){
+  if(!bobStatusEl) return;
+  if(mode === 'thinking'){
+    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;"></span> composing\u2026';
+  } else if(mode === 'error'){
+    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;background:var(--rust);"></span> reply failed \u2014 check api key';
+  } else {
+    bobStatusEl.innerHTML = '<span class="dot" style="width:6px;height:6px;"></span> online';
+  }
+}
+
+async function requestBobReply(userText){
+  const apiKey = getApiKey();
+  if(!apiKey) throw new Error('no API key set');
+
+  bobHistory.push({ role: 'user', content: userText });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-5',
+      max_tokens: 300,
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'low' },
+      system: BOB_SYSTEM_PROMPT,
+      messages: bobHistory,
+    }),
+  });
+
+  if(!res.ok){
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err && err.error && err.error.message) || ('HTTP ' + res.status));
+  }
+
+  const data = await res.json();
+  if(data.stop_reason === 'refusal') throw new Error('bob declined to respond');
+  const block = (data.content || []).find(b => b.type === 'text');
+  const text = (block && block.text ? block.text : '...').trim();
+  bobHistory.push({ role: 'assistant', content: text });
+  return text;
+}
+
+// ---- core transmit pipeline (either party -> the other) ----
+async function transmit(from, rawText){
+  const text = rawText.trim().toLowerCase();
+  if(!text) return null;
 
   const to = from === 'alice' ? 'bob' : 'alice';
   const fromLog = document.getElementById(from + '-log');
@@ -944,14 +1014,45 @@ async function sendMessage(from){
   setIjkBadge(toIjkEl, 'READ');
   await sleep(240);
   setIjkBadge(toIjkEl, 'STORE');
-  inputEl.disabled = false;
-  inputEl.focus();
+
+  return text;
 }
 
-['alice','bob'].forEach(side => {
-  document.getElementById(side + '-input').addEventListener('keydown', e => {
-    if(e.key === 'Enter') sendMessage(side);
-  });
+async function sendMessage(from){
+  if(from !== 'alice') return; // bob's replies are AI-driven, not typed manually
+  const inputEl = document.getElementById('alice-input');
+  const raw = inputEl.value;
+  if(!raw.trim()) return;
+  inputEl.value = '';
+  inputEl.disabled = true;
+
+  const sent = await transmit('alice', raw);
+  inputEl.disabled = false;
+  inputEl.focus();
+
+  if(sent) await triggerBobReply(sent);
+}
+
+async function triggerBobReply(aliceText){
+  setBobStatus('thinking');
+  const aliceInputEl = document.getElementById('alice-input');
+  aliceInputEl.disabled = true;
+  try {
+    const reply = await requestBobReply(aliceText);
+    await transmit('bob', reply);
+    setBobStatus('online');
+  } catch(err){
+    console.error(err);
+    setBobStatus('error');
+    setTimeout(() => setBobStatus('online'), 4000);
+  } finally {
+    aliceInputEl.disabled = false;
+    aliceInputEl.focus();
+  }
+}
+
+document.getElementById('alice-input').addEventListener('keydown', e => {
+  if(e.key === 'Enter') sendMessage('alice');
 });
 </script>
 
