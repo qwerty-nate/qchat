@@ -1,14 +1,26 @@
 """
-qchat full chain: WRITE -> ENCRYPT -> SEND -> RECEIVE -> DECRYPT -> READ -> STORE -> DELETE
+qchat full chain: WRITE -> ENCRYPT -> SEND_ATTEMPT -> SEND_HERALD_OK ->
+SEND_COMPLETE -> RECEIVE -> AWAITING_ACK_RECV -> RECEIVE_CONFIRMED ->
+DECRYPT -> READ -> STORE -> DELETE
 --------------------------------------------------------------------------------------------
 Two SEPARATE 8-qutrit circuits (Alice, Bob) -- no entanglement crosses
-between them. Whichever party is sending for a given message walks the
-WRITE branch (ijk: OFF -> ON_SCAN -> WRITE -> ENCRYPT -> SEND) and
-produces a classical envelope (op, member_id, target_id, payload trits)
-relayed exactly like the WebSocket JSON envelope. Whichever party is
-receiving walks the RECEIVE branch (ijk: OFF -> ON_SCAN -> RECEIVE ->
+between them YET (see teleportation-relay TODOs inline below). Whichever
+party is sending for a given message walks the WRITE branch (ijk: OFF ->
+ON_SCAN -> WRITE -> ENCRYPT -> SEND_ATTEMPT -> SEND_HERALD_OK ->
+SEND_COMPLETE) and produces a classical envelope (op, member_id,
+target_id, payload trits) relayed exactly like the WebSocket JSON
+envelope. Whichever party is receiving walks the RECEIVE branch (ijk:
+OFF -> ON_SCAN -> RECEIVE -> AWAITING_ACK_RECV -> RECEIVE_CONFIRMED ->
 DECRYPT -> READ -> STORE -> DELETE) and re-prepares its own bcde
 register from those classical trits.
+
+NOTE: SEND_HERALD_OK/SEND_COMPLETE and AWAITING_ACK_RECV/RECEIVE_CONFIRMED
+are currently placeholder ijk hops with no real Bell-swap measurement or
+classical correction-bit payload wired in -- see inline TODOs in
+write_encrypt_send and receive_decrypt_read_store_delete. DELETE was moved
+off (2,1,2) to (1,2,2) to free that vector for SEND_HERALD_FAIL, which will
+need more downstream logic (retry loop, failure-path circuit) than DELETE
+does -- see SEND_HERALD_FAIL below.
 
 Both parties use the SAME two functions below -- the branch taken is a
 per-message role, not a fixed per-party identity. Either Alice or Bob
@@ -28,28 +40,50 @@ import cirq
 
 from qchat_payload_circuit import char_to_trits, trits_to_char, shift_gate
 
-# Confirmed IJK tree (forward-only, single-qutrit-flip transitions).
-# Root: OFF -> ON_SCAN is the branch point; WRITE-branch is the send
-# path, RECEIVE-branch is the receive path.
+# Confirmed IJK tree (forward-only, single-qutrit-flip transitions, CYCLIC
+# mod-3 -- a trit at 2 rolling to 0 via QutritCycle counts as a legal +1).
+# Root: OFF -> ON_SCAN is the branch point; WRITE-branch is the send path
+# (now routed through the teleportation-relay herald/ack sub-states),
+# RECEIVE-branch is the receive path (same treatment).
 STATES = {
     "OFF": (0, 0, 0),
     "ON_SCAN": (1, 0, 0),
     "WRITE": (1, 1, 0),
     "ENCRYPT": (1, 1, 1),
-    "SEND": (2, 1, 1),
+    "SEND_ATTEMPT": (2, 1, 1),        # was SEND -- photon emitted, BSM in flight
+    "SEND_HERALD_OK": (2, 2, 1),      # BSM heralded success (this IS the send-side ack)
+    "SEND_COMPLETE": (2, 2, 2),       # correction bits transmitted, send done
     "RECEIVE": (1, 0, 1),
-    "DECRYPT": (1, 0, 2),
-    "READ": (1, 1, 2),
-    "STORE": (2, 1, 2),
-    "DELETE": (2, 2, 2),
+    "AWAITING_ACK_RECV": (2, 0, 1),   # waiting on classical correction bits from server
+    "RECEIVE_CONFIRMED": (0, 0, 1),   # correction bits received (cyclic i+1 from above)
+    "DECRYPT": (0, 1, 1),             # moved off (1,0,2), now reachable from RECEIVE_CONFIRMED
+    "READ": (0, 1, 2),                # moved to stay adjacent to new DECRYPT
+    "STORE": (1, 1, 2),               # moved to stay adjacent to new READ
+    "DELETE": (1, 2, 2),              # moved off (2,1,2) -- that vector now
+                                       # reserved for SEND_HERALD_FAIL, which
+                                       # has more downstream dependents (retry
+                                       # logic) than DELETE does
 }
 STATES_REV = {v: k for k, v in STATES.items()}
 
 # Ordered walk for each branch -- every consecutive pair here differs by
-# exactly one qutrit, one step forward (verified against is_valid_transition
-# in qchat_payload_circuit.py).
-WRITE_BRANCH = ["OFF", "ON_SCAN", "WRITE", "ENCRYPT", "SEND"]
-RECEIVE_BRANCH = ["OFF", "ON_SCAN", "RECEIVE", "DECRYPT", "READ", "STORE", "DELETE"]
+# exactly one qutrit, one cyclic (mod-3) step forward (verified against
+# is_valid_transition in qchat_payload_circuit.py, which is already cyclic).
+WRITE_BRANCH = ["OFF", "ON_SCAN", "WRITE", "ENCRYPT",
+                "SEND_ATTEMPT", "SEND_HERALD_OK", "SEND_COMPLETE"]
+RECEIVE_BRANCH = ["OFF", "ON_SCAN", "RECEIVE", "AWAITING_ACK_RECV",
+                   "RECEIVE_CONFIRMED", "DECRYPT", "READ", "STORE", "DELETE"]
+
+# SEND_ATTEMPT can also herald a failure (photon loss / no-click) rather than
+# success -- this branch does not advance to SEND_COMPLETE; the caller retries
+# from SEND_ATTEMPT. Not walked automatically by _walk; handled in
+# write_encrypt_send below based on the simulated herald outcome.
+SEND_HERALD_FAIL = (2, 1, 2)  # DELETE moved off this vector (now at (1,2,2))
+                               # to free it for SEND_HERALD_FAIL, which has
+                               # more downstream dependents (retry/failure
+                               # branch logic) than DELETE does. Still not
+                               # wired into write_encrypt_send yet -- retry
+                               # loop and failure-path circuit not built.
 
 MEMBERS = {"SERVER": 0, "ALICE": 1, "BOB": 2}
 MEMBERS_REV = {v: k for k, v in MEMBERS.items()}
@@ -95,11 +129,19 @@ def write_encrypt_send(ch: str, sender: str, target: str, key_trits=(0, 0, 0, 0)
         if kt:
             circuit.append(shift_gate(kt)(qutrit).controlled_by(i, j, k, control_values=STATES["ENCRYPT"]))
 
-    # SEND: re-address a from sender -> target
-    _walk(circuit, [i, j, k], ["ENCRYPT", "SEND"])
+    # SEND_ATTEMPT: photon emitted toward server, re-address a from sender -> target
+    _walk(circuit, [i, j, k], ["ENCRYPT", "SEND_ATTEMPT"])
     a_delta = (MEMBERS[target] - MEMBERS[sender]) % 3
     if a_delta:
         circuit.append(shift_gate(a_delta)(a))
+
+    # SEND_HERALD_OK / SEND_COMPLETE: placeholder walk only -- these two hops
+    # are where the real Bell-swap measurement + classical correction bits
+    # belong once the relay is genuinely quantum. Currently just advances ijk
+    # with no herald simulation, no BSM failure branch, and no correction-bit
+    # payload. TODO: replace with real BSM outcome + SEND_HERALD_FAIL retry
+    # path before this is anything more than a state-table placeholder.
+    _walk(circuit, [i, j, k], ["SEND_ATTEMPT", "SEND_HERALD_OK", "SEND_COMPLETE"])
 
     circuit.append(cirq.measure(i, j, k, key="ijk"))
     circuit.append(cirq.measure(a, key="a"))
@@ -146,8 +188,17 @@ def receive_decrypt_read_store_delete(envelope, seq, key_trits=(0, 0, 0, 0), sel
         if tgt:
             circuit.append(shift_gate(tgt)(qutrit).controlled_by(i, j, k, control_values=STATES["RECEIVE"]))
 
+    # AWAITING_ACK_RECV / RECEIVE_CONFIRMED: placeholder walk only -- same
+    # caveat as SEND_HERALD_OK/SEND_COMPLETE above. This is where the
+    # classical correction bits (m1, m2) from the server's Bell-swap
+    # measurement should actually be consumed and the teleportation
+    # correction (Z^(2m1) -> X^(2m2) -> index-negation N, from
+    # qchat_teleport.py) applied to bcde, ahead of the existing OTP
+    # DECRYPT step below. Not yet wired in.
+    _walk(circuit, [i, j, k], ["RECEIVE", "AWAITING_ACK_RECV", "RECEIVE_CONFIRMED"])
+
     # DECRYPT: mod-3 subtract key_trits back off bcde, gated on ijk == DECRYPT
-    _walk(circuit, [i, j, k], ["RECEIVE", "DECRYPT"])
+    _walk(circuit, [i, j, k], ["RECEIVE_CONFIRMED", "DECRYPT"])
     for qutrit, kt in zip([b, c, d, e], key_trits):
         if kt:
             circuit.append(shift_gate(-kt % 3)(qutrit).controlled_by(i, j, k, control_values=STATES["DECRYPT"]))
