@@ -680,19 +680,24 @@
               <div class="arrow">↳</div>
               <div class="step">WRITE</div><div class="arrow">→</div>
               <div class="step">ENCRYPT</div><div class="arrow">→</div>
-              <div class="step">SEND</div>
+              <div class="step">SEND_ATTEMPT</div><div class="arrow">→</div>
+              <div class="step">SEND_HERALD_OK</div><div class="arrow">→</div>
+              <div class="step">SEND_COMPLETE</div>
             </div>
           </div>
           <div style="display:flex; gap:18px; margin-top:10px; flex-wrap:wrap;">
             <div class="chain" style="flex-wrap:wrap; row-gap:10px;">
               <div class="arrow">↳</div>
               <div class="step">RECEIVE</div><div class="arrow">→</div>
+              <div class="step">AWAITING_ACK_RECV</div><div class="arrow">→</div>
+              <div class="step">RECEIVE_CONFIRMED</div><div class="arrow">→</div>
               <div class="step">DECRYPT</div><div class="arrow">→</div>
               <div class="step">READ</div><div class="arrow">→</div>
-              <div class="step">STORE</div>
+              <div class="step">STORE</div><div class="arrow">→</div>
+              <div class="step">DELETE</div>
             </div>
           </div>
-          <p style="color:var(--muted); font-size:14px; margin-top:18px; line-height:1.6;">The WRITE branch is the send path, the RECEIVE branch is the receive path. Both Alice and Bob carry the same tree and walk whichever branch fits their role for that message — either party can write, encrypt, send, receive, decrypt, read, and store. Every transition is exactly one qutrit flip.</p>
+          <p style="color:var(--muted); font-size:14px; margin-top:18px; line-height:1.6;">The WRITE branch is the send path, the RECEIVE branch is the receive path. Both Alice and Bob carry the same tree and walk whichever branch fits their role for that message — either party can write, encrypt, send, receive, decrypt, read, and store. Every transition is exactly one qutrit flip (cyclic mod-3). The SEND_HERALD_OK and AWAITING_ACK_RECV steps are placeholders for the teleportation-relay Bell-swap measurement and classical correction bits — not yet wired to a real herald outcome.</p>
         </div>
         <div>
           <h3 style="color:var(--tan); font-size:18px; margin-bottom:14px;">Tier classifier — I</h3>
@@ -727,15 +732,20 @@
         {name:'ON_SCAN', ijk:[1,0,0], flip:0},
         {name:'WRITE', ijk:[1,1,0], flip:1},
         {name:'ENCRYPT', ijk:[1,1,1], flip:2},
-        {name:'SEND', ijk:[2,1,1], flip:0},
+        {name:'SEND_ATTEMPT', ijk:[2,1,1], flip:0},
+        {name:'SEND_HERALD_OK', ijk:[2,2,1], flip:1},
+        {name:'SEND_COMPLETE', ijk:[2,2,2], flip:2},
       ],
       receive: [
         {name:'OFF', ijk:[0,0,0], flip:null},
         {name:'ON_SCAN', ijk:[1,0,0], flip:0},
         {name:'RECEIVE', ijk:[1,0,1], flip:2},
-        {name:'DECRYPT', ijk:[1,0,2], flip:2},
-        {name:'READ', ijk:[1,1,2], flip:1},
-        {name:'STORE', ijk:[2,1,2], flip:0},
+        {name:'AWAITING_ACK_RECV', ijk:[2,0,1], flip:0},
+        {name:'RECEIVE_CONFIRMED', ijk:[0,0,1], flip:0},
+        {name:'DECRYPT', ijk:[0,1,1], flip:1},
+        {name:'READ', ijk:[0,1,2], flip:2},
+        {name:'STORE', ijk:[1,1,2], flip:0},
+        {name:'DELETE', ijk:[1,2,2], flip:1},
       ],
     };
     const svg = document.getElementById('circuit-svg');
@@ -863,14 +873,19 @@ function typeBoot(){
 typeBoot();
 
 // ---- ijk odometer: cycling the real confirmed op chain vectors ----
-const ops = ["WRITE","ENCRYPT","SEND","RECEIVE","DECRYPT","READ","STORE"];
-// confirmed state assignments from the unified IJK tree (0/1/2 basis).
-// OFF -> ON_SCAN is the branch point: WRITE branch is the send path,
-// RECEIVE branch is the receive path. Either party can walk either branch.
+const ops = ["WRITE","ENCRYPT","SEND_ATTEMPT","SEND_HERALD_OK","SEND_COMPLETE",
+             "RECEIVE","AWAITING_ACK_RECV","RECEIVE_CONFIRMED","DECRYPT","READ","STORE","DELETE"];
+// confirmed state assignments from the unified IJK tree (0/1/2 basis, cyclic mod-3).
+// OFF -> ON_SCAN is the branch point: WRITE branch is the send path (now
+// routed through the teleportation-relay herald/ack sub-states),
+// RECEIVE branch is the receive path (same treatment). Either party can
+// walk either branch.
 const IJK = {
   OFF:[0,0,0], "ON/SCAN":[1,0,0],
-  WRITE:[1,1,0], ENCRYPT:[1,1,1], SEND:[2,1,1],
-  RECEIVE:[1,0,1], DECRYPT:[1,0,2], READ:[1,1,2], STORE:[2,1,2]
+  WRITE:[1,1,0], ENCRYPT:[1,1,1],
+  SEND_ATTEMPT:[2,1,1], SEND_HERALD_OK:[2,2,1], SEND_COMPLETE:[2,2,2],
+  RECEIVE:[1,0,1], AWAITING_ACK_RECV:[2,0,1], RECEIVE_CONFIRMED:[0,0,1],
+  DECRYPT:[0,1,1], READ:[0,1,2], STORE:[1,1,2], DELETE:[1,2,2]
 };
 const vectors = ops.map(o => IJK[o]);
 let opIndex = 0;
@@ -1120,8 +1135,16 @@ async function transmit(from, rawText){
     return null;
   }
 
-  setIjkBadge(fromIjkEl, 'SEND');
+  setIjkBadge(fromIjkEl, 'SEND_ATTEMPT');
+  await sleep(200);
+  setIjkBadge(fromIjkEl, 'SEND_HERALD_OK');
+  await sleep(200);
+  setIjkBadge(fromIjkEl, 'SEND_COMPLETE');
   setIjkBadge(toIjkEl, 'RECEIVE');
+  await sleep(200);
+  setIjkBadge(toIjkEl, 'AWAITING_ACK_RECV');
+  await sleep(200);
+  setIjkBadge(toIjkEl, 'RECEIVE_CONFIRMED');
 
   ledger.innerHTML = '';
   const bubble = addBubble(toLog, '\u00A0', 'theirs');
