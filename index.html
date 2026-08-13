@@ -402,6 +402,15 @@
     border-bottom-left-radius:2px;
     min-height:20px;
   }
+  .bubble.blocked{
+    align-self:center;
+    background:#3A2620;
+    color:var(--rust);
+    border:1px solid var(--rust);
+    font-size:12px;
+    text-align:center;
+    max-width:96%;
+  }
   .chatinput{
     display:flex; gap:8px;
     padding:12px 14px;
@@ -528,7 +537,8 @@
 
   @media (max-width:760px){
     .chatgrid{grid-template-columns:1fr;}
-    .chat-relay{flex-direction:row; justify-content:center;}
+    .chat-relay{flex-direction:row; flex-wrap:wrap; justify-content:center;}
+    .chat-relay .qber-row{max-width:220px;}
   }
 
   footer{
@@ -592,7 +602,7 @@
       <div class="section-head">
         <div class="num">01 — live circuit</div>
         <h2>Communicate using a quantum circuit</h2>
-        <p>Real char → index → trit encoding, run in-browser: each character is looked up in the 80-state table (frequency-ordered lowercase, digits, punctuation), converted to base-3, and prepared on <span class="mono" style="color:var(--tan)">b,c,d,e</span>.</p>
+        <p>Real char → index → trit encoding, run in-browser: each character is looked up in the 80-state table (frequency-ordered lowercase, digits, punctuation), converted to base-3, and prepared on <span class="mono" style="color:var(--tan)">b,c,d,e</span>. Every send opens with a qutrit Bell-state key exchange across the relay — flip the toggle below to <span class="mono" style="color:var(--tan)">eve</span> and watch the QBER bar catch the intercept before a single character crosses.</p>
       </div>
 
       <div class="chatgrid">
@@ -606,7 +616,15 @@
         </div>
 
         <div class="chat-relay">
+          <div class="mode-toggle" id="eve-toggle">
+            <button type="button" class="mode-btn active" data-eve="off" onclick="setEavesdropper(false)">clean</button>
+            <button type="button" class="mode-btn" data-eve="on" onclick="setEavesdropper(true)">eve</button>
+          </div>
           <div class="server-node small"><span>relay</span></div>
+          <div class="qber-row" style="width:100%; margin-bottom:0;">
+            <div class="flabel"><span id="relay-qber-label">qber</span><span id="relay-qber-value">—</span></div>
+            <div class="qber-bar"><div id="relay-qber-fill" style="width:0%; background:var(--teal);"></div></div>
+          </div>
           <div class="ticker" id="ticker"><span class="ticker-empty">— idle —</span></div>
         </div>
 
@@ -811,30 +829,6 @@
   })();
   </script>
 
-  <section id="qkd">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="num">03 — key exchange</div>
-        <h2>Quantum Key Distribution identifies eavesdroppers</h2>
-        <p>Key establishment uses qutrit Bell states measured across two conjugate Fourier bases, once per session. An eavesdropper on the channel doesn't get caught by a rule — they get caught by the QBER spiking.</p>
-      </div>
-      <div class="qber">
-        <div class="qkd-controls">
-          <div class="mode-toggle" id="eve-toggle">
-            <button type="button" class="mode-btn active" data-eve="off" onclick="setEavesdropper(false)">no eavesdropper</button>
-            <button type="button" class="mode-btn" data-eve="on" onclick="setEavesdropper(true)">intercept-resend attack</button>
-          </div>
-          <button type="button" class="qkd-run-btn" id="qkd-run-btn" onclick="runQkdSim()">run key exchange</button>
-        </div>
-        <div class="qber-row" style="margin-bottom:0;">
-          <div class="flabel"><span id="qkd-status-label">awaiting simulation…</span><span id="qkd-qber-value">—</span></div>
-          <div class="qber-bar"><div id="qkd-qber-fill" style="width:0%; background:var(--teal);"></div></div>
-        </div>
-        <div class="qkd-readout mono" id="qkd-readout">Pick a scenario and run the exchange to measure QBER across the sifted key.</div>
-      </div>
-    </div>
-  </section>
-
   <footer>
     qchat — cirq · python · react · three.js<br>
     simulated locally, built for real hardware
@@ -942,13 +936,14 @@ function glyph(ch){ return ch === ' ' ? '␣' : (ch === '\n' ? '⏎' : (ch === '
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-// ---- qkd eavesdropper simulation ----
+// ---- qkd eavesdropper simulation, folded into the relay ----
 // Mirrors qkd_protocol.py: qutrit Bell pairs measured across two conjugate
 // Fourier bases, sifted down to matching-basis measurements, then a public
 // sample of the sifted key exposes the QBER. An intercept-resend attacker
 // forces a measurement basis on each pair before resending it, which
 // disturbs the state and drives the error rate up — that disturbance is
-// what gets caught, not the eavesdropper directly.
+// what gets caught, not the eavesdropper directly. Every send below runs
+// this exchange fresh across the relay before a single character moves.
 let eveEnabled = false;
 const QBER_THRESHOLD = 11; // % — illustrative abort threshold
 
@@ -961,53 +956,27 @@ window.setEavesdropper = function(on){
 
 function randRange(min, max){ return min + Math.random() * (max - min); }
 
-window.runQkdSim = async function(){
-  const runBtn = document.getElementById('qkd-run-btn');
-  const label = document.getElementById('qkd-status-label');
-  const valueEl = document.getElementById('qkd-qber-value');
-  const fillEl = document.getElementById('qkd-qber-fill');
-  const readout = document.getElementById('qkd-readout');
-  runBtn.disabled = true;
-
-  const pairs = 64;
-  label.textContent = 'preparing qutrit bell pairs…';
-  valueEl.textContent = '0%';
-  fillEl.style.width = '0%';
-  fillEl.style.background = 'var(--teal)';
-  readout.textContent = 'preparing ' + pairs + ' entangled qutrit pairs, measured across two conjugate Fourier bases...';
-  await sleep(500);
-
-  const sifted = Math.round(pairs * randRange(0.32, 0.38));
-  label.textContent = 'sifting on matching bases…';
-  readout.textContent = 'basis reconciliation kept ' + sifted + ' of ' + pairs + ' pairs (measurement bases matched).';
-  await sleep(500);
-
+// runs one key exchange for the message about to be sent, animating the
+// relay's qber bar, and reports whether the disturbance trips the threshold
+async function measureQber(){
+  const valueEl = document.getElementById('relay-qber-value');
+  const fillEl = document.getElementById('relay-qber-fill');
   const targetQber = eveEnabled ? randRange(38, 52) : randRange(0, 3);
-  label.textContent = 'sampling the sifted key publicly…';
 
-  for(let i = 1; i <= 20; i++){
-    const shown = (targetQber / 20) * i;
+  for(let i = 1; i <= 10; i++){
+    const shown = (targetQber / 10) * i;
     valueEl.textContent = shown.toFixed(1) + '%';
     fillEl.style.width = Math.min(shown, 100) + '%';
     fillEl.style.background = shown > QBER_THRESHOLD ? 'var(--rust)' : 'var(--teal)';
-    await sleep(45);
+    await sleep(35);
   }
 
   const detected = targetQber > QBER_THRESHOLD;
   valueEl.textContent = targetQber.toFixed(1) + '%';
   fillEl.style.width = Math.min(targetQber, 100) + '%';
   fillEl.style.background = detected ? 'var(--rust)' : 'var(--teal)';
-
-  if(detected){
-    label.textContent = 'eavesdropper detected';
-    readout.textContent = 'QBER ' + targetQber.toFixed(1) + '% exceeds the ' + QBER_THRESHOLD + '% security threshold — key discarded. That gap is the measurement disturbance an intercept-resend attack leaves behind.';
-  } else {
-    label.textContent = 'channel secure';
-    readout.textContent = 'QBER ' + targetQber.toFixed(1) + '% is within the noise floor (< ' + QBER_THRESHOLD + '%). Sifted key of ' + sifted + ' qutrits accepted for the session.';
-  }
-
-  runBtn.disabled = false;
-};
+  return { targetQber, detected };
+}
 
 // ---- live two-party chat ----
 const ticker = document.getElementById('ticker');
@@ -1138,6 +1107,19 @@ async function transmit(from, rawText){
   await sleep(280);
   setIjkBadge(fromIjkEl, 'ENCRYPT');
   await sleep(280);
+
+  ticker.innerHTML = '<span class="ticker-empty">key exchange…</span>';
+  const { targetQber, detected } = await measureQber();
+
+  if(detected){
+    ticker.innerHTML = '<span class="ticker-empty" style="color:var(--rust);">eve caught — key discarded</span>';
+    setIjkBadge(fromIjkEl, 'OFF');
+    addBubble(toLog, '\u26A0 intercepted — QBER ' + targetQber.toFixed(1) + '% exceeded the ' + QBER_THRESHOLD + '% threshold, key discarded, message never left the relay', 'blocked');
+    await sleep(1600);
+    tickerIdle();
+    return null;
+  }
+
   setIjkBadge(fromIjkEl, 'SEND');
   setIjkBadge(toIjkEl, 'RECEIVE');
 
