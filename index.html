@@ -451,6 +451,33 @@
   .status-dot.thinking{background:var(--rust); animation:pulse 1s ease-in-out infinite;}
   .status-dot.error{background:var(--rust);}
 
+  /* ---------- qkd eavesdropper sim ---------- */
+  .qkd-controls{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;}
+  .qkd-run-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    background:var(--teal);
+    color:#182420;
+    border:none;
+    border-radius:20px;
+    padding:6px 16px;
+    cursor:pointer;
+    letter-spacing:.03em;
+    margin-left:auto;
+  }
+  .qkd-run-btn:hover{filter:brightness(1.08);}
+  .qkd-run-btn:disabled{opacity:.5; cursor:not-allowed;}
+  .qber-bar > div{transition:width .1s linear, background .2s ease;}
+  .qkd-readout{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px;
+    color:var(--muted);
+    line-height:1.6;
+    margin-top:6px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+
   .chat-relay{
     display:flex;
     flex-direction:column;
@@ -792,14 +819,18 @@
         <p>Key establishment uses qutrit Bell states measured across two conjugate Fourier bases, once per session. An eavesdropper on the channel doesn't get caught by a rule — they get caught by the QBER spiking.</p>
       </div>
       <div class="qber">
-        <div class="qber-row">
-          <div class="flabel"><span>no eavesdropper</span><span>~0%</span></div>
-          <div class="qber-bar"><div style="width:2%; background:var(--teal);"></div></div>
+        <div class="qkd-controls">
+          <div class="mode-toggle" id="eve-toggle">
+            <button type="button" class="mode-btn active" data-eve="off" onclick="setEavesdropper(false)">no eavesdropper</button>
+            <button type="button" class="mode-btn" data-eve="on" onclick="setEavesdropper(true)">intercept-resend attack</button>
+          </div>
+          <button type="button" class="qkd-run-btn" id="qkd-run-btn" onclick="runQkdSim()">run key exchange</button>
         </div>
         <div class="qber-row" style="margin-bottom:0;">
-          <div class="flabel"><span>eavesdropper present</span><span>~50%</span></div>
-          <div class="qber-bar"><div style="width:50%; background:var(--rust);"></div></div>
+          <div class="flabel"><span id="qkd-status-label">awaiting simulation…</span><span id="qkd-qber-value">—</span></div>
+          <div class="qber-bar"><div id="qkd-qber-fill" style="width:0%; background:var(--teal);"></div></div>
         </div>
+        <div class="qkd-readout mono" id="qkd-readout">Pick a scenario and run the exchange to measure QBER across the sifted key.</div>
       </div>
     </div>
   </section>
@@ -909,10 +940,78 @@ function decodeIndex(idx){
 }
 function glyph(ch){ return ch === ' ' ? '␣' : (ch === '\n' ? '⏎' : (ch === '\t' ? '⇥' : ch)); }
 
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ---- qkd eavesdropper simulation ----
+// Mirrors qkd_protocol.py: qutrit Bell pairs measured across two conjugate
+// Fourier bases, sifted down to matching-basis measurements, then a public
+// sample of the sifted key exposes the QBER. An intercept-resend attacker
+// forces a measurement basis on each pair before resending it, which
+// disturbs the state and drives the error rate up — that disturbance is
+// what gets caught, not the eavesdropper directly.
+let eveEnabled = false;
+const QBER_THRESHOLD = 11; // % — illustrative abort threshold
+
+window.setEavesdropper = function(on){
+  eveEnabled = on;
+  document.querySelectorAll('#eve-toggle .mode-btn').forEach(btn => {
+    btn.classList.toggle('active', (btn.dataset.eve === 'on') === on);
+  });
+};
+
+function randRange(min, max){ return min + Math.random() * (max - min); }
+
+window.runQkdSim = async function(){
+  const runBtn = document.getElementById('qkd-run-btn');
+  const label = document.getElementById('qkd-status-label');
+  const valueEl = document.getElementById('qkd-qber-value');
+  const fillEl = document.getElementById('qkd-qber-fill');
+  const readout = document.getElementById('qkd-readout');
+  runBtn.disabled = true;
+
+  const pairs = 64;
+  label.textContent = 'preparing qutrit bell pairs…';
+  valueEl.textContent = '0%';
+  fillEl.style.width = '0%';
+  fillEl.style.background = 'var(--teal)';
+  readout.textContent = 'preparing ' + pairs + ' entangled qutrit pairs, measured across two conjugate Fourier bases...';
+  await sleep(500);
+
+  const sifted = Math.round(pairs * randRange(0.32, 0.38));
+  label.textContent = 'sifting on matching bases…';
+  readout.textContent = 'basis reconciliation kept ' + sifted + ' of ' + pairs + ' pairs (measurement bases matched).';
+  await sleep(500);
+
+  const targetQber = eveEnabled ? randRange(38, 52) : randRange(0, 3);
+  label.textContent = 'sampling the sifted key publicly…';
+
+  for(let i = 1; i <= 20; i++){
+    const shown = (targetQber / 20) * i;
+    valueEl.textContent = shown.toFixed(1) + '%';
+    fillEl.style.width = Math.min(shown, 100) + '%';
+    fillEl.style.background = shown > QBER_THRESHOLD ? 'var(--rust)' : 'var(--teal)';
+    await sleep(45);
+  }
+
+  const detected = targetQber > QBER_THRESHOLD;
+  valueEl.textContent = targetQber.toFixed(1) + '%';
+  fillEl.style.width = Math.min(targetQber, 100) + '%';
+  fillEl.style.background = detected ? 'var(--rust)' : 'var(--teal)';
+
+  if(detected){
+    label.textContent = 'eavesdropper detected';
+    readout.textContent = 'QBER ' + targetQber.toFixed(1) + '% exceeds the ' + QBER_THRESHOLD + '% security threshold — key discarded. That gap is the measurement disturbance an intercept-resend attack leaves behind.';
+  } else {
+    label.textContent = 'channel secure';
+    readout.textContent = 'QBER ' + targetQber.toFixed(1) + '% is within the noise floor (< ' + QBER_THRESHOLD + '%). Sifted key of ' + sifted + ' qutrits accepted for the session.';
+  }
+
+  runBtn.disabled = false;
+};
+
 // ---- live two-party chat ----
 const ticker = document.getElementById('ticker');
 const ledger = document.getElementById('ledger');
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
 function setIjkBadge(el, name){
   el.textContent = 'ijk ' + IJK[name].join(',') + ' · ' + name;
