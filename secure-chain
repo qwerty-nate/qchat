@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""
+qchat_secure_chain.py
+----------------------
+Executable driver that wires the qutrit QKD protocol (qkd_protocol.py) into
+the full IJK message chain (qchat_full_chain.py): Alice and Bob first
+establish a shared secret key over entangled qutrit Bell pairs -- with
+empirical eavesdropper detection via QBER -- then use that key as a
+one-time pad while walking every character of the message through the
+real WRITE -> ENCRYPT -> SEND_ATTEMPT -> SEND_HERALD_OK -> SEND_COMPLETE /
+RECEIVE -> AWAITING_ACK_RECV -> RECEIVE_CONFIRMED -> DECRYPT -> READ ->
+STORE -> DELETE circuit chain (each hop a real cirq circuit on qutrits).
+
+This does not duplicate any circuit logic -- it imports and orchestrates
+the two pieces that were previously demoed in isolation:
+  qkd_protocol.py      -- key negotiation (cirq qutrit Bell pairs)
+  qchat_full_chain.py  -- the message pipeline (cirq qutrit IJK circuits)
+and closes the gap noted in qchat_full_chain.py, whose write_encrypt_send /
+receive_decrypt_read_store_delete accept key_trits but were only ever
+called with the default (0,0,0,0) placeholder.
+
+Run directly:
+    python qchat_secure_chain.py
+    python qchat_secure_chain.py --message "hi bob!" --sender ALICE --target BOB
+    python qchat_secure_chain.py --eavesdrop
+    python qchat_secure_chain.py --seed 7 --quiet
+
+Requires: cirq, numpy   (pip install cirq numpy)
+Must sit in the same directory as:
+    qchat_payload_circuit.py
+    qkd_protocol.py
+    qchat_full_chain.py
+"""
+
+import argparse
+import sys
+
+import cirq  # noqa: F401  -- pulled in transitively too, but explicit here
+             # since this file's whole point is to be the cirq-based
+             # executable tying QKD + the message chain together.
+
+from qkd_protocol import generate_key
+from qchat_full_chain import (
+    write_encrypt_send,
+    receive_decrypt_read_store_delete,
+    MEMBERS,
+)
+
+
+def establish_session_key(n_chars, eavesdrop=False, seed=None, verbose=True):
+    """Run the entangled-qutrit QKD protocol for enough rounds to cover the
+    whole message (4 key trits per character), sift, and QBER-check it.
+    Returns the usable key trits, or None if the channel looks tampered
+    with (or not enough sifted key material survived).
+    """
+    needed_trits = n_chars * 4
+    # ~50% of rounds are lost to basis mismatch (sifting), and by default
+    # another 30% of what's left is spent on the public QBER sample --
+    # oversample generously so eavesdrop-free runs comfortably clear it.
+    n_rounds = max(needed_trits * 8, 40)
+
+    result = generate_key(n_rounds=n_rounds, eavesdrop=eavesdrop, seed=seed)
+
+    if verbose:
+        print("── QKD session ─────────────────────────────────────────────")
+        print(f"  entangled qutrit pairs sent : {result['n_rounds']}")
+        print(f"  sifted (matching basis)     : {result['n_sifted']}")
+        print(f"  sampled for QBER check      : {result['n_sampled_for_check']}")
+        print(f"  QBER                        : {result['qber']:.3f}")
+        print(f"  channel secure?             : {result['secure']}")
+        print(f"  usable key trits            : {result['key_length']} (need {needed_trits})")
+
+    if not result["secure"]:
+        if verbose:
+            print("  !! eavesdropper detected -- key discarded, aborting send")
+        return None
+    if result["key_length"] < needed_trits:
+        if verbose:
+            print("  !! not enough sifted key material -- increase n_rounds")
+        return None
+
+    return result["key"][:needed_trits]
+
+
+def send_secure_message(payload, sender="ALICE", target="BOB",
+                         eavesdrop=False, seed=None, verbose=True):
+    """Full pipeline: QKD key establishment -> per-character IJK circuit
+    walk (WRITE/ENCRYPT/SEND.../RECEIVE/.../DECRYPT/READ/STORE/DELETE)
+    using the freshly negotiated key as a one-time pad. Returns
+    (decoded_text, log) or (None, []) if the QKD stage aborted.
+    """
+    if sender not in MEMBERS or target not in MEMBERS:
+        raise ValueError(f"unregistered member: sender={sender!r} target={target!r}")
+
+    key = establish_session_key(len(payload), eavesdrop=eavesdrop, seed=seed, verbose=verbose)
+    if key is None:
+        return None, []
+
+    if verbose:
+        print(f"\n── Secure send: {sender} -> {target}: {payload!r} ──────────────")
+
+    decoded_chars = []
+    log = []
+    for n, ch in enumerate(payload):
+        key_trits = tuple(key[n * 4:(n + 1) * 4])
+
+        envelope = write_encrypt_send(
+            ch, sender, target, key_trits=key_trits,
+            verbose=(verbose and n == 0),
+        )
+        decoded_char, log_entry = receive_decrypt_read_store_delete(
+            envelope, seq=n + 1, key_trits=key_trits, self_id=target,
+            verbose=(verbose and n == 0),
+        )
+        decoded_chars.append(decoded_char)
+        log.append(log_entry)
+
+        if verbose:
+            mismatch = "  <-- MISMATCH" if decoded_char != ch else ""
+            print(f"  [{n + 1:>2}] '{ch}' --ijk chain--> key={key_trits} "
+                  f"--> decoded '{decoded_char}'{mismatch}")
+
+    decoded = "".join(decoded_chars)
+
+    if verbose:
+        print(f"\n  original : {payload!r}")
+        print(f"  decoded  : {decoded!r}")
+        print(f"  match    : {decoded == payload}")
+
+    return decoded, log
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="qchat: QKD-secured qutrit message exchange over the IJK circuit chain"
+    )
+    parser.add_argument("--message", default="hi bob!", help="plaintext to send")
+    parser.add_argument("--sender", default="ALICE", choices=list(MEMBERS.keys()))
+    parser.add_argument("--target", default="BOB", choices=list(MEMBERS.keys()))
+    parser.add_argument("--eavesdrop", action="store_true",
+                         help="simulate an intercept-resend attacker on the QKD channel")
+    parser.add_argument("--seed", type=int, default=None,
+                         help="RNG seed for reproducible QKD rounds")
+    parser.add_argument("--quiet", action="store_true", help="suppress step-by-step trace")
+    args = parser.parse_args()
+
+    decoded, log = send_secure_message(
+        args.message, sender=args.sender, target=args.target,
+        eavesdrop=args.eavesdrop, seed=args.seed, verbose=not args.quiet,
+    )
+
+    if decoded is None:
+        print("\nmessage NOT sent -- QKD channel compromised or key exhausted")
+        sys.exit(1)
+
+    if args.quiet:
+        print(f"{args.sender} -> {args.target}: {decoded!r}  (match={decoded == args.message})")
+    else:
+        print("\nclassical log (DELETE checkpoints):")
+        for entry in log:
+            print(f"  {entry}")
+
+
+if __name__ == "__main__":
+    main()
