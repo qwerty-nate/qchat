@@ -260,6 +260,34 @@ def run_chain(payload: str, sender="ALICE", target="BOB", verbose_first=False):
     return "".join(decoded_chars), log
 
 
+def run_chain_traced(payload: str, sender="ALICE", target="BOB"):
+    """Same round trip as run_chain, but prints a single collapsed trace line
+    per branch instead of per-character detail -- e.g.:
+
+        OFF -> ON_SCAN -> WRITE("hi bob!") -> ENCRYPT -> SEND
+        RECEIVE -> DECRYPT -> READ("hi bob!") -> STORE
+
+    NOTE: this trace uses the short op names (WRITE/SEND/RECEIVE/DECRYPT/
+    READ/STORE) as the intended-behavior view of the pipeline. The actual
+    ijk walk underneath now runs through the full herald/ack chain
+    (SEND_ATTEMPT -> SEND_HERALD_OK -> SEND_COMPLETE and
+    AWAITING_ACK_RECV -> RECEIVE_CONFIRMED) -- this trace deliberately
+    collapses those placeholder sub-states rather than exposing them, since
+    they don't carry real herald/correction logic yet. Once the BSM
+    simulation is wired in, this trace should either show the sub-states or
+    a pass/fail branch, not silently pretend they aren't there.
+    """
+    decoded, log = run_chain(payload, sender=sender, target=target)
+
+    print(f'OFF -> ON_SCAN -> WRITE("{payload}") -> ENCRYPT -> SEND')
+    print(f'RECEIVE -> DECRYPT -> READ("{decoded}") -> STORE')
+
+    if decoded != payload:
+        print(f'  !!! mismatch: sent "{payload}" but received "{decoded}"')
+
+    return decoded, log
+
+
 if __name__ == "__main__":
     payload = "hi bob!"
     print(f"original payload : {payload!r}\n")
