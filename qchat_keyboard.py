@@ -230,7 +230,7 @@ def encode_string(text):
         total_cost: total gate operations across all characters
     """
     results = []
-teleport_ready = []
+    teleport_ready = []
     total_cost = 0
 
     for char in text.lower():
