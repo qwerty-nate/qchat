@@ -1,38 +1,65 @@
 import cirq
 
 # ── Encoding library ──────────────────────────────────────────────────────────
+# Canonical 81-state scheme -- same SYMBOLS ordering (NULL, SPACE, letters by
+# frequency, digits, punctuation, extras) and same index -> 4-trit base-3
+# encoding as char_to_trits()/SYMBOLS in qchat_payload_circuit.py, which
+# qchat_full_chain.py and index.html's CHARSET also derive from. Previously
+# this table used its own non-contiguous vectors and swapped in BS/DEL/ESC
+# where the canonical scheme has §/¶/•/°/©/®/™/€/£ -- both have been dropped
+# in favor of matching the shared encoding exactly.
 CHAR_TO_VEC = {
     'NULL': '0000', ' ':    '0001',
     'e':    '0002', 't':    '0010', 'a':    '0011', 'o':    '0012',
     'i':    '0020', 'n':    '0021', 's':    '0022', 'h':    '0100',
     'r':    '0101', 'd':    '0102', 'l':    '0110', 'c':    '0111',
     'u':    '0112', 'm':    '0120', 'w':    '0121', 'f':    '0122',
-    'g':    '0200', 'y':    '0201', 'p':    '0202', 'b':    '1000',
-    'v':    '1001', 'k':    '1002', 'j':    '1010', 'x':    '1011',
-    'q':    '1012', 'z':    '1020',
-    '0':    '1100', '1':    '1101', '2':    '1102', '3':    '1110',
-    '4':    '1111', '5':    '1112', '6':    '1120', '7':    '1121',
-    '8':    '1122', '9':    '1200',
-    '.':    '1201', ',':    '1202',
-    '!':    '2000', '?':    '2001', "'":    '2002', '"':    '2010',
-    '-':    '2011', '_':    '2012', '(':    '2020', ')':    '2021',
-    '[':    '2022', ']':    '2100', '{':    '2101', '}':    '2102',
-    ':':    '2110', ';':    '2111', '/':    '2112', '\\':   '2120',
-    '@':    '2121', '#':    '2122', '$':    '2200', '%':    '2201',
-    '&':    '2202', '*':    '2210', '+':    '2211', '=':    '2212',
-    '<':    '2220', '>':    '2221', '|':    '2222',
-    '~':    '0210', '^':    '0211', '`':    '0212',
-    'NL':   '0220', 'TAB':  '0221', 'BS':   '0222',
-    'DEL':  '1021', 'ESC':  '1022',
+    'g':    '0200', 'y':    '0201', 'p':    '0202', 'b':    '0210',
+    'v':    '0211', 'k':    '0212', 'j':    '0220', 'x':    '0221',
+    'q':    '0222', 'z':    '1000',
+    '0':    '1001', '1':    '1002', '2':    '1010', '3':    '1011',
+    '4':    '1012', '5':    '1020', '6':    '1021', '7':    '1022',
+    '8':    '1100', '9':    '1101',
+    '.':    '1102', ',':    '1110',
+    '!':    '1111', '?':    '1112', "'":    '1120', '"':    '1121',
+    ';':    '1122', ':':    '1200', '-':    '1201', '_':    '1202',
+    '(':    '1210', ')':    '1211', '[':    '1212', ']':    '1220',
+    '{':    '1221', '}':    '1222', '<':    '2000', '>':    '2001',
+    '/':    '2002', '\\':   '2010', '|':    '2011', '@':    '2012',
+    '#':    '2020', '$':    '2021', '%':    '2022', '^':    '2100',
+    '&':    '2101', '*':    '2102', '+':    '2110', '=':    '2111',
+    '~':    '2112', '`':    '2120',
+    'NL':   '2121', 'TAB':  '2122',
+    '§':    '2200', '¶':    '2201', '•':    '2202', '°':    '2210',
+    '©':    '2211', '®':    '2212', '™':    '2220', '€':    '2221',
+    '£':    '2222',
 }
 VEC_TO_CHAR = {v: k for k, v in CHAR_TO_VEC.items()}
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-WRITE   = [1, 1, 0]   # 110
-RECEIVE = [1, 0, 1]   # 101
-READ    = [1, 2, 1]   # 121
-STORE   = [1, 1, 1]   # 111
-SEND    = [1, 1, 2]   # 112
+# Confirmed IJK tree (forward-only, single-qutrit-flip transitions, cyclic
+# mod-3) -- canonical source: qchat_full_chain.py STATES dict. Pulled in here
+# so this simplified client's ijk vectors stay in sync with the real tree
+# instead of drifting (READ and STORE previously disagreed with it, and plain
+# SEND was a stand-in for the herald/ack sub-states below).
+OFF                = [0, 0, 0]   # 000
+ON_SCAN            = [1, 0, 0]   # 100
+WRITE              = [1, 1, 0]   # 110
+ENCRYPT            = [1, 1, 1]   # 111
+SEND_ATTEMPT       = [2, 1, 1]   # 211 -- photon emitted, BSM in flight
+SEND_HERALD_OK     = [2, 2, 1]   # 221 -- BSM heralded success (send-side ack)
+SEND_COMPLETE      = [2, 2, 2]   # 222 -- correction bits transmitted, send done
+RECEIVE            = [1, 0, 1]   # 101
+AWAITING_ACK_RECV  = [2, 0, 1]   # 201 -- waiting on classical correction bits
+RECEIVE_CONFIRMED  = [0, 0, 1]   # 001 -- correction bits received
+DECRYPT            = [0, 1, 1]   # 011
+READ               = [0, 1, 2]   # 012
+STORE              = [1, 1, 2]   # 112
+DELETE             = [1, 2, 2]   # 122
+
+# Herald failure branch -- not yet wired into send() below. Real behavior
+# would retry from SEND_ATTEMPT instead of advancing to SEND_COMPLETE.
+SEND_HERALD_FAIL   = [2, 1, 2]   # 212
 
 # ── Client class ──────────────────────────────────────────────────────────────
 class QutritClient:
@@ -70,7 +97,7 @@ class QutritClient:
                 gates.append(cirq.XPowGate(dimension=3, exponent=val).on(qutrit))
         return gates
 
-    def _set_a(self):
+    def _set_a(self): #Assigns member_id to conversation participant via qutrit a
         """Load member_id into a qutrit."""
         if self.member_id != 0:
             return [cirq.XPowGate(dimension=3, exponent=self.member_id).on(self.a)]
@@ -117,13 +144,18 @@ class QutritClient:
         return bcde
 
     def send(self, bcde_vec):
-        """SEND (112): transfer bcde vector to the other client's RECEIVE."""
-        gates = self._set_ijk(SEND) + self._set_a()
+        """SEND_ATTEMPT (211): transfer bcde vector to the other client's RECEIVE.
+
+        NOTE: this collapses straight to a transfer, same as before -- the
+        SEND_HERALD_OK/SEND_COMPLETE handshake from the confirmed tree isn't
+        simulated here yet (see qchat_full_chain.py for that placeholder walk).
+        """
+        gates = self._set_ijk(SEND_ATTEMPT) + self._set_a()
         for qutrit, val in zip([self.b, self.c, self.d, self.e], bcde_vec):
             val = int(val)
             if val != 0:
                 gates.append(cirq.XPowGate(dimension=3, exponent=val).on(qutrit))
-        _, _, bcde = self._run(gates, f"SEND  vec={bcde_vec}")
+        _, _, bcde = self._run(gates, f"SEND_ATTEMPT  vec={bcde_vec}")
         # Transfer vector over the simulated channel
         self.channel.receive(bcde_vec, sender_id=self.member_id)
 
@@ -135,7 +167,7 @@ class QutritClient:
         return bcde
 
     def read(self, bcde_vec):
-        """READ (121): decode bcde vector to character."""
+        """READ (012): decode bcde vector to character."""
         gates = self._set_ijk(READ) + self._set_a()
         for qutrit, val in zip([self.b, self.c, self.d, self.e], bcde_vec):
             val = int(val)
@@ -147,7 +179,7 @@ class QutritClient:
         return char
 
     def store(self, bcde_vec):
-        """STORE (111): commit character to buffer."""
+        """STORE (112): commit character to buffer."""
         char = VEC_TO_CHAR.get(bcde_vec, '?')
         self.buffer.append(char)
         print(f"  [{self.name}] STORE '{char}' → buffer: {''.join(self.buffer)}")
